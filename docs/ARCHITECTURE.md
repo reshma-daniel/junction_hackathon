@@ -53,8 +53,9 @@ IDLE ──still_too_long──► PROMPT_WALK ─"Follow me"─► LEAD_WALK �
 IDLE ──med.late──► FOLLOW_USER ─► PROMPT_PILL ─► (med.taken → PRAISE) | (give up → log, notify)
 any  ──voice.wake("Charlie")──► COME_TO_USER ─► BARK + blink ─► IDLE
 ```
-LED moods: idle=blue (calm), prompting=yellow, success=green, concern=red (soft, never
-harsh), listening=white pulse, walking=cyan.
+LED moods (full table in MESSAGES.md): calm=soft blue slow blink, listening=white, happy=green
+fast blink, pleading=amber 1 Hz blink, encouraging=turquoise double blink, sad=dim purple slow glow,
+sleepy=dim orange middle row, searching=pale blue sweep.
 
 ## Safety / tone (depression context)
 Warm, never guilt-tripping. Max re-asks per episode (e.g. 3) then back off. Quiet hours.

@@ -38,10 +38,19 @@ VOICE_SAY = "voice.say"
 VOICE_WAKE = "voice.wake"
 VOICE_DONE = "voice.done"
 
-COLORS = {
-    "calm": "#2f6fff", "prompt": "#ffc83d", "success": "#2fd06b",
-    "concern": "#ff4d4d", "walk": "#27d3e6", "listen": "#ffffff", "happy": "#9b5de5",
+# Eye moods: keep in sync with the "Eye moods" table in docs/MESSAGES.md and MOODS in firmware/robot/eyes.cpp.
+# mood -> (colour, pattern, period_ms or None)
+MOODS = {
+    "calm":        ("#3c78ff", "blink", 3000),         # idle: slow blink
+    "listening":   ("#ffffff", "solid", None),         # while you talk
+    "happy":       ("#1eff3c", "blink", 200),          # "Charlie" / pill taken: fast blink 2 s, then calm
+    "pleading":    ("#ff8c00", "blink", 1000),         # pill reminder, lost you on a walk
+    "encouraging": ("#28e0d0", "double_blink", 2000),  # on a walk
+    "sad":         ("#7828c8", "glow", 6000),          # pill missed, couldn't find you
+    "sleepy":      ("#401900", "half", None),          # quiet hours, waking up
+    "searching":   ("#96c8ff", "sweep", 3000),         # looking for you
 }
+COLORS = {mood: spec[0] for mood, spec in MOODS.items()}
 
 
 def msg(type_: str, **fields) -> dict:
