@@ -1,0 +1,64 @@
+# Kaamos's 5 reactions. The brain asks for one: {"type":"voice.react","reaction":"pill","attempt":2}
+# Each reaction is a list of steps played in order:
+#   {sound: <name in sfx.yaml>, count: n}   {say: <intent in phrases.yaml>}   {pause: seconds}
+# `eyes` is a suggestion for the brain (colour names from shared/protocol.py COLORS).
+#
+# Escalation (encourage, pill): the level is the higher of
+#   - the reminder number (`attempt`: 1 = first reminder), and
+#   - how late it is (`late_s`), using `escalate_late_s` for the current profile.
+# When attempt > max_reasks (shared/config.yaml), Kaamos plays `give_up`: a gentle back-off, never guilt.
+
+escalate_late_s:          # seconds late at which level 1 / 2 / 3 starts
+  demo: [0, 30, 60]
+  production: [0, 900, 1800]
+
+reactions:
+
+  wake_up:                # Kaamos wakes up (start of the day, or leaving sleep mode)
+    eyes: {color: calm, pattern: pulse}
+    steps:
+      - {sound: yawn}
+      - {pause: 0.3}
+      - {say: wake_greeting}
+
+  called:                 # someone said "Kaamos"
+    eyes: {color: happy, pattern: blink}
+    steps:
+      - {sound: happy_bark}
+      - {say: greeting_charlie}
+
+  encourage:              # nudge to walk / move / do the task; insists more each time
+    levels:
+      1:
+        eyes: {color: prompt, pattern: solid}
+        steps: [{sound: happy_bark}, {say: walk_prompt}]
+      2:
+        eyes: {color: prompt, pattern: pulse}
+        steps: [{sound: bark}, {say: walk_reask}]
+      3:
+        eyes: {color: prompt, pattern: blink}
+        steps: [{sound: bark, count: 2}, {say: walk_insist}]
+    give_up:
+      eyes: {color: calm, pattern: solid}
+      steps: [{say: walk_backoff}]
+
+  pill:                   # medication time: calls for attention, more each time
+    levels:
+      1:
+        eyes: {color: prompt, pattern: solid}
+        steps: [{sound: bark}, {say: pill_prompt}]
+      2:
+        eyes: {color: prompt, pattern: pulse}
+        steps: [{say: pill_reask}]
+      3:
+        eyes: {color: prompt, pattern: blink}
+        steps: [{sound: bark, count: 2}, {say: pill_insist}]
+    give_up:
+      eyes: {color: calm, pattern: solid}
+      steps: [{say: pill_backoff}]
+
+  reward:                 # the task is done. task = walk | pill | (anything else -> general)
+    eyes: {color: success, pattern: wink}
+    steps:
+      - {sound: excited_spin}
+      - {say: "{task}_praise"}

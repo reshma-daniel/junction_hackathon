@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaamos demo panel</title>
+<style>
+  :root { --bg:#101218; --card:#1a1d26; --text:#eef0f5; --muted:#9aa1b2; --line:#2a2f3c; --accent:#ffc83d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, -apple-system, sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 18px; }
+  .top { display:grid; grid-template-columns: 200px 1fr; gap:16px; align-items:center;
+         background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .eyes { display:flex; gap:18px; justify-content:center; }
+  .eye { width:64px; height:64px; border-radius:50%; background:#2f6fff; box-shadow:0 0 28px #2f6fff88;
+         transition: background .3s, box-shadow .3s; }
+  .pulse .eye { animation: pulse 1.6s ease-in-out infinite; }
+  .blink .eye { animation: blink 1s steps(2, start) infinite; }
+  .wink .eye:last-child { animation: wink 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.45; transform:scale(.92); } }
+  @keyframes blink { to { opacity:.25; } }
+  @keyframes wink { 45%,55% { transform:scaleY(.15); } }
+  #status { font-size:22px; font-weight:650; } #timer { color:var(--muted); margin-top:4px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:22px 0 8px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:10px; }
+  button { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:12px;
+           padding:14px; text-align:left; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); } button:active { transform:translateY(1px); }
+  button b { display:block; font-size:16px; } button span { color:var(--muted); font-size:13px; }
+  kbd { float:right; background:#2a2f3c; border-radius:6px; padding:1px 7px; font-size:12px; color:var(--text); }
+  .main button { border-color:#3a4152; }
+  ol { list-style:none; padding:0; margin:0; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  li { padding:8px 14px; border-bottom:1px solid var(--line); font-family: ui-monospace, Menlo, monospace; font-size:13px; }
+  li:last-child { border-bottom:0; } li:first-child { color:var(--text); } li { color:var(--muted); }
+  @media (max-width:560px) { .top { grid-template-columns:1fr; text-align:center; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kaamos demo panel</h1>
+  <p class="sub">The buttons stand in for the sensors. Kaamos's voice plays on the robot (or laptop).</p>
+
+  <section class="top">
+    <div class="eyes" id="eyes"><div class="eye"></div><div class="eye"></div></div>
+    <div><div id="status">Connecting…</div><div id="timer"></div></div>
+  </section>
+
+  <h2>Demo script</h2>
+  <div class="grid main">
+    <button data-e="wake_up"><kbd>W</kbd><b>1 · Wake up</b><span>Yawn + good morning</span></button>
+    <button data-e="skip"><kbd>S</kbd><b>2 · Sat still too long</b><span>Skip the wait: walk prompt now</span></button>
+    <button data-e="skip"><kbd>N</kbd><b>3 · User ignores it</b><span>Next reminder now (insists more)</span></button>
+    <button data-e="moved"><kbd>M</kbd><b>4 · User walks</b><span>Wearable moving → reward</span></button>
+    <button data-e="pill_due"><kbd>P</kbd><b>5 · Pill time</b><span>Pill reminder starts</span></button>
+    <button data-e="pill_taken"><kbd>T</kbd><b>6 · Pill taken</b><span>Dock reach → reward</span></button>
+    <button data-e="kaamos"><kbd>K</kbd><b>7 · "Kaamos!"</b><span>Bark + live conversation</span></button>
+  </div>
+
+  <h2>Control</h2>
+  <div class="grid">
+    <button data-e="stop"><kbd>X</kbd><b>Stop sound</b><span>Cut what is playing</span></button>
+    <button data-e="reset"><kbd>R</kbd><b>Reset</b><span>Back to idle, timers restart</span></button>
+  </div>
+
+  <h2>What happened</h2>
+  <ol id="log"></ol>
+</main>
+<script>
+  const keys = { w:"wake_up", s:"skip", n:"skip", m:"moved", p:"pill_due", t:"pill_taken", k:"kaamos", x:"stop", r:"reset" };
+  const send = (e) => fetch("/event/" + e, { method: "POST" }).then(refresh);
+  document.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => send(b.dataset.e));
+  document.addEventListener("keydown", ev => { const e = keys[ev.key.toLowerCase()]; if (e && !ev.metaKey && !ev.ctrlKey) send(e); });
+  async function refresh() {
+    try {
+      const s = await (await fetch("/state")).json();
+      document.getElementById("status").textContent = s.status;
+      document.getElementById("timer").textContent = s.timer;
+      const eyes = document.getElementById("eyes");
+      eyes.className = "eyes " + (s.eyes.pattern || "solid");
+      eyes.querySelectorAll(".eye").forEach(el => { el.style.background = s.eyes.color; el.style.boxShadow = "0 0 28px " + s.eyes.color + "88"; });
+      document.getElementById("log").innerHTML = s.log.map(l => "<li>" + l.replace(/</g, "&lt;") + "</li>").join("");
+    } catch { document.getElementById("status").textContent = "Demo runner not running"; }
+  }
+  setInterval(refresh, 400); refresh();
+</script>
+</body>
+</html>

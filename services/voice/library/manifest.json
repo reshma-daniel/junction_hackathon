@@ -1,0 +1,269 @@
+{
+ "tts": {
+  "wake_greeting": [
+   {
+    "file": "tts/wake_greeting__257cc488.wav",
+    "text": "Good morning! I'm awake.",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/wake_greeting__a5de9ddb.wav",
+    "text": "Mmm, hi there. Ready for a gentle day?",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/wake_greeting__58f5b814.wav",
+    "text": "Hello, sunshine. I'm here with you.",
+    "emotion": "warm"
+   }
+  ],
+  "greeting_charlie": [
+   {
+    "file": "tts/greeting_charlie__28d7c7f1.wav",
+    "text": "You called? I'm here!",
+    "emotion": "excited"
+   },
+   {
+    "file": "tts/greeting_charlie__d25bf278.wav",
+    "text": "Hi hi! Did someone say Kaamos?",
+    "emotion": "excited"
+   }
+  ],
+  "walk_prompt": [
+   {
+    "file": "tts/walk_prompt__bf59dbff.wav",
+    "text": "Follow me, let's walk a little!",
+    "emotion": "excited"
+   },
+   {
+    "file": "tts/walk_prompt__e65b8775.wav",
+    "text": "Hey, wanna stretch our legs? Follow me!",
+    "emotion": "excited"
+   },
+   {
+    "file": "tts/walk_prompt__7f74fab9.wav",
+    "text": "Come on, a tiny walk with me?",
+    "emotion": "excited"
+   },
+   {
+    "file": "tts/walk_prompt__b1f8ab09.wav",
+    "text": "Let's go see what's over there. Follow me!",
+    "emotion": "excited"
+   }
+  ],
+  "walk_reask": [
+   {
+    "file": "tts/walk_reask__c7b27637.wav",
+    "text": "No rush. Just a few steps together?",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/walk_reask__1f6f5a1b.wav",
+    "text": "I'd love the company. Just a little walk?",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/walk_reask__9a5da94e.wav",
+    "text": "Even two minutes counts. Shall we?",
+    "emotion": "warm"
+   }
+  ],
+  "walk_insist": [
+   {
+    "file": "tts/walk_insist__a7c1b09d.wav",
+    "text": "Reshma please? Just to the window and back!",
+    "emotion": "playful"
+   },
+   {
+    "file": "tts/walk_insist__91284d9e.wav",
+    "text": "I'll do my happy barking song if you come. Deal?",
+    "emotion": "playful"
+   },
+   {
+    "file": "tts/walk_insist__e61e6290.wav",
+    "text": "One tiny walk, I promise it'll feel nice.",
+    "emotion": "playful"
+   }
+  ],
+  "walk_backoff": [
+   {
+    "file": "tts/walk_backoff__022642b5.wav",
+    "text": "That's okay. We can try again later. I'm right here.",
+    "emotion": "soft"
+   },
+   {
+    "file": "tts/walk_backoff__61c7dfa1.wav",
+    "text": "No worries at all. Resting is fine too.",
+    "emotion": "soft"
+   }
+  ],
+  "pill_prompt": [
+   {
+    "file": "tts/pill_prompt__112bf9ba.wav",
+    "text": "Knock knock! It's time for your medicine.",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/pill_prompt__98f376fd.wav",
+    "text": "Hey, medicine time. I'll wait right here.",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/pill_prompt__2b49494c.wav",
+    "text": "Your pills are ready whenever you are.",
+    "emotion": "warm"
+   }
+  ],
+  "pill_reask": [
+   {
+    "file": "tts/pill_reask__f6613791.wav",
+    "text": "Just a gentle reminder, your medicine is still waiting.",
+    "emotion": "soft"
+   },
+   {
+    "file": "tts/pill_reask__387e7057.wav",
+    "text": "No worries, it's not too late. Your pills are right here.",
+    "emotion": "soft"
+   }
+  ],
+  "pill_insist": [
+   {
+    "file": "tts/pill_insist__1c121505.wav",
+    "text": "Please take your medicine? It helps you feel better.",
+    "emotion": "warm"
+   },
+   {
+    "file": "tts/pill_insist__0d6cddaf.wav",
+    "text": "I'll sit right here until you do. Reshma please?",
+    "emotion": "warm"
+   }
+  ],
+  "pill_backoff": [
+   {
+    "file": "tts/pill_backoff__ed597d62.wav",
+    "text": "Okay. I'll remind you a little later.",
+    "emotion": "soft"
+   },
+   {
+    "file": "tts/pill_backoff__7cb64dac.wav",
+    "text": "That's alright. I'll ask again in a bit.",
+    "emotion": "soft"
+   }
+  ],
+  "walk_praise": [
+   {
+    "file": "tts/walk_praise__2151d4e7.wav",
+    "text": "Yay, we did it! That was nice.",
+    "emotion": "happy"
+   },
+   {
+    "file": "tts/walk_praise__29594d42.wav",
+    "text": "Look at us go! Thank you for walking with me.",
+    "emotion": "happy"
+   },
+   {
+    "file": "tts/walk_praise__6d1e5c1e.wav",
+    "text": "That felt good, didn't it? I'm proud of us.",
+    "emotion": "happy"
+   }
+  ],
+  "pill_praise": [
+   {
+    "file": "tts/pill_praise__3cd639b2.wav",
+    "text": "Thank you! Taking care of yourself matters.",
+    "emotion": "happy"
+   },
+   {
+    "file": "tts/pill_praise__4bca500e.wav",
+    "text": "Done! You're doing great today.",
+    "emotion": "happy"
+   },
+   {
+    "file": "tts/pill_praise__e333603b.wav",
+    "text": "That's one more kind thing you did for yourself.",
+    "emotion": "happy"
+   }
+  ],
+  "general_praise": [
+   {
+    "file": "tts/general_praise__0eccfdbe.wav",
+    "text": "You did it! I'm so proud of you.",
+    "emotion": "happy"
+   },
+   {
+    "file": "tts/general_praise__40d035ac.wav",
+    "text": "Yay! That's a win today.",
+    "emotion": "happy"
+   }
+  ],
+  "gentle_checkin": [
+   {
+    "file": "tts/gentle_checkin__fae3436c.wav",
+    "text": "It's been a quieter few days. That's okay. Want to do something small together?",
+    "emotion": "soft"
+   },
+   {
+    "file": "tts/gentle_checkin__0ea3143f.wav",
+    "text": "Hey, I'm here with you. Maybe some fresh air later?",
+    "emotion": "soft"
+   }
+  ],
+  "low_battery": [
+   {
+    "file": "tts/low_battery__fe3ffb54.wav",
+    "text": "I'm getting a bit sleepy. Could you charge me soon?",
+    "emotion": "calm"
+   }
+  ]
+ },
+ "sfx": {
+  "bark": [
+   {
+    "file": "sfx/bark__818e4461.wav",
+    "text": "[barking] Woof!",
+    "emotion": null
+   },
+   {
+    "file": "sfx/bark__082b759b.wav",
+    "text": "[barking] Arf!",
+    "emotion": null
+   },
+   {
+    "file": "sfx/bark__50a556b2.wav",
+    "text": "[barking] Woof woof!",
+    "emotion": null
+   }
+  ],
+  "happy_bark": [
+   {
+    "file": "sfx/happy_bark__40b83992.wav",
+    "text": "[excited] [barking] Yip yip!",
+    "emotion": null
+   },
+   {
+    "file": "sfx/happy_bark__b26567a1.wav",
+    "text": "[happy] [barking] Arf arf!",
+    "emotion": null
+   }
+  ],
+  "yawn": [
+   {
+    "file": "sfx/yawn__e8319918.wav",
+    "text": "[yawning] Aaah... hello.",
+    "emotion": null
+   }
+  ],
+  "excited_spin": [
+   {
+    "file": "sfx/excited_spin__16abf632.wav",
+    "text": "[excited] Yay! [barking] Arf arf!",
+    "emotion": null
+   },
+   {
+    "file": "sfx/excited_spin__9f1c1cad.wav",
+    "text": "[happy] Woohoo! [barking] Woof!",
+    "emotion": null
+   }
+  ]
+ }
+}
