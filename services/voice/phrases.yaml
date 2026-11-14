@@ -1,0 +1,112 @@
+# What Kaamos says. One entry per intent (the brain sends `voice.say {intent}`;
+# reactions.yaml uses them too). Rules: short (< 4 s), warm, never guilt, never pressure, varied.
+#
+# emotion -> an ElevenLabs v3 audio tag placed in front of the text when rendering
+# (see EMOTION_TAGS in render.py): warm, excited, happy, playful, soft, calm, curious.
+# A variant can override the intent's emotion:  - {text: "...", emotion: soft}
+# "Kaamos" is sent to ElevenLabs as "Kah-moss" so it sounds Finnish (PRONOUNCE in render.py).
+#
+# After editing, run `python render.py` again: only new or changed lines are rendered.
+
+# ---- wake_up ----
+wake_greeting:
+  emotion: warm
+  variants:
+    - "Good morning! I'm awake."
+    - "Mmm, hi there. Ready for a gentle day?"
+    - "Hello, sunshine. I'm here with you."
+
+# ---- called ("Kaamos!") ----  file name keeps "charlie" on purpose
+greeting_charlie:
+  emotion: excited
+  variants:
+    - "You called? I'm here!"
+    - "Hi hi! Did someone say Kaamos?"
+
+# ---- encourage (levels 1 / 2 / 3, then back off) ----
+walk_prompt:
+  emotion: excited
+  variants:
+    - "Follow me, let's walk a little!"
+    - "Hey, wanna stretch our legs? Follow me!"
+    - "Come on, a tiny walk with me?"
+    - "Let's go see what's over there. Follow me!"
+
+walk_reask:
+  emotion: warm
+  variants:
+    - "No rush. Just a few steps together?"
+    - "I'd love the company. Just a little walk?"
+    - "Even two minutes counts. Shall we?"
+
+walk_insist:
+  emotion: playful
+  variants:
+    - "Reshma please? Just to the window and back!"
+    - "I'll do my happy barking song if you come. Deal?"
+    - "One tiny walk, I promise it'll feel nice."
+
+walk_backoff:
+  emotion: soft
+  variants:
+    - "That's okay. We can try again later. I'm right here."
+    - "No worries at all. Resting is fine too."
+
+# ---- pill (levels 1 / 2 / 3, then back off) ----
+pill_prompt:
+  emotion: warm
+  variants:
+    - "Knock knock! It's time for your medicine."
+    - "Hey, medicine time. I'll wait right here."
+    - "Your pills are ready whenever you are."
+
+pill_reask:
+  emotion: soft
+  variants:
+    - "Just a gentle reminder, your medicine is still waiting."
+    - "No worries, it's not too late. Your pills are right here."
+
+pill_insist:
+  emotion: warm
+  variants:
+    - "Please take your medicine? It helps you feel better."
+    - "I'll sit right here until you do. Reshma please?"
+
+pill_backoff:
+  emotion: soft
+  variants:
+    - "Okay. I'll remind you a little later."
+    - "That's alright. I'll ask again in a bit."
+
+# ---- reward (say: "{task}_praise") ----
+walk_praise:
+  emotion: happy
+  variants:
+    - "Yay, we did it! That was nice."
+    - "Look at us go! Thank you for walking with me."
+    - "That felt good, didn't it? I'm proud of us."
+
+pill_praise:
+  emotion: happy
+  variants:
+    - "Thank you! Taking care of yourself matters."
+    - "Done! You're doing great today."
+    - "That's one more kind thing you did for yourself."
+
+general_praise:
+  emotion: happy
+  variants:
+    - "You did it! I'm so proud of you."
+    - "Yay! That's a win today."
+
+# ---- other ----
+gentle_checkin:
+  emotion: soft
+  variants:
+    - "It's been a quieter few days. That's okay. Want to do something small together?"
+    - "Hey, I'm here with you. Maybe some fresh air later?"
+
+low_battery:
+  emotion: calm
+  variants:
+    - "I'm getting a bit sleepy. Could you charge me soon?"
