@@ -1,4 +1,5 @@
-// behavior.cpp — owner: Reshma. Wake up, then alternate idle/search; "Charlie" -> happy.
+// behavior.cpp — owner: Reshma. Wake up, then alternate idle/search; "Charlie" -> happy;
+// the laptop can hold a mood while it speaks a phrase (behavior_express).
 #include "behavior.h"
 #include "eyes.h"
 #include "mic.h"
@@ -17,12 +18,16 @@ static const uint32_t BEH_IDLE_MS        = 4000;   // calm this long, then look 
 static const uint32_t BEH_SEARCH_MS      = 4000;   // look around this long, then calm again
 static const uint32_t BEH_HAPPY_MS       = 2000;   // happy reaction to "Charlie"
 static const uint32_t BEH_AWAKE_BLUE     = 0x3C78FF;
+static const uint32_t BEH_EXPRESS_MAX_MS = 15000;  // safety: laptop never said "done"
+static const uint32_t BEH_HAPPY_REFRESH_MS = 1600; // re-start happy before eyes.* turns it back to calm (2 s)
 
 static BehaviorState g_beh_state = BEH_WAKE;
 static unsigned long g_beh_since = 0;
 static bool g_beh_wake_blinking = false;
+static EyeMood g_beh_express_mood = MOOD_CALM;
+static unsigned long g_beh_express_refresh = 0;
 
-static const char* const BEH_NAMES[] = {"wake", "idle", "search", "happy"};
+static const char* const BEH_NAMES[] = {"wake", "idle", "search", "happy", "express"};
 
 static void beh_enter(BehaviorState s) {
   g_beh_state = s;
@@ -32,7 +37,8 @@ static void beh_enter(BehaviorState s) {
     case BEH_IDLE:   eyes_set_mood(MOOD_CALM); break;
     case BEH_SEARCH: eyes_set_mood(MOOD_SEARCHING); break;   // TODO(Sara): motion_set_mode(MODE_FOLLOW)
     case BEH_HAPPY:  eyes_set_mood(MOOD_HAPPY); break;       // TODO(Sara): motion_set_mode(MODE_COME)
-                                                             // TODO(Wiam): audio_bark(2)
+                                                             // (sound: laptop plays Wiam's "called" reaction)
+    case BEH_EXPRESS: eyes_set_mood(g_beh_express_mood); g_beh_express_refresh = g_beh_since; break;
   }
   char buf[64];
   snprintf(buf, sizeof buf, "{\"type\":\"robot.behavior\",\"state\":\"%s\"}", BEH_NAMES[s]);
@@ -40,6 +46,16 @@ static void beh_enter(BehaviorState s) {
 }
 
 void behavior_begin() { beh_enter(BEH_WAKE); }
+
+void behavior_express(EyeMood mood) {
+  if (mood >= MOOD_COUNT) return;
+  g_beh_express_mood = mood;
+  beh_enter(BEH_EXPRESS);
+}
+
+void behavior_express_done() {
+  if (g_beh_state == BEH_EXPRESS) beh_enter(BEH_IDLE);
+}
 
 void behavior_tick() {
   if (mic_called()) { beh_enter(BEH_HAPPY); return; }     // "Charlie" wins in every state
@@ -56,6 +72,17 @@ void behavior_tick() {
     case BEH_HAPPY:
       if (t >= BEH_HAPPY_MS) beh_enter(BEH_IDLE);
       return;
+    case BEH_EXPRESS: {                                // hold the mood while the laptop speaks
+      if (t >= BEH_EXPRESS_MAX_MS) { beh_enter(BEH_IDLE); return; }
+      unsigned long now = millis();
+      if (g_beh_express_mood == MOOD_HAPPY && now - g_beh_express_refresh >= BEH_HAPPY_REFRESH_MS) {
+        eyes_set_mood(MOOD_HAPPY);                     // keep happy for the whole phrase
+        g_beh_express_refresh = now;
+      } else if (g_beh_express_mood != MOOD_HAPPY && eyes_mood() != g_beh_express_mood) {
+        eyes_set_mood(g_beh_express_mood);
+      }
+      return;
+    }
     case BEH_IDLE:
       if (t >= BEH_IDLE_MS) { beh_enter(BEH_SEARCH); return; }
       break;
@@ -71,4 +98,4 @@ void behavior_tick() {
 }
 
 BehaviorState behavior_state() { return g_beh_state; }
-const char* behavior_state_name(BehaviorState s) { return s <= BEH_HAPPY ? BEH_NAMES[s] : "?"; }
+const char* behavior_state_name(BehaviorState s) { return s <= BEH_EXPRESS ? BEH_NAMES[s] : "?"; }

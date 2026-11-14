@@ -492,18 +492,23 @@ code:
     //   power on -> WAKE (3 s) -> IDLE (4 s) <-> SEARCH (4 s)   ... forever, when nothing happens
     //   "Charlie" (mic_called) in any state -> HAPPY (2 s) -> IDLE
     //   while someone is speaking in IDLE/SEARCH the eyes show "listening" (white)
+    //   laptop speaks a phrase -> EXPRESS: hold that mood until the laptop says "done" (max 15 s) -> IDLE
     //
     // Uses eyes.* and mic.*. Later hooks (marked TODO in behavior.cpp): motion (Sara), bark (Wiam).
     #include <stdint.h>
 
-    enum BehaviorState : uint8_t { BEH_WAKE = 0, BEH_IDLE, BEH_SEARCH, BEH_HAPPY };
+
+    enum BehaviorState : uint8_t { BEH_WAKE = 0, BEH_IDLE, BEH_SEARCH, BEH_HAPPY, BEH_EXPRESS };
 
     void behavior_begin();          // call once in setup, after eyes_begin() and mic_begin()
     void behavior_tick();           // call every loop, after mic_tick() and before eyes_tick()
+    void behavior_express(EyeMood mood);   // laptop starts a phrase: hold this mood (max 15 s)
+    void behavior_express_done();          // laptop finished the phrase: back to idle
     BehaviorState behavior_state();
     const char* behavior_state_name(BehaviorState s);
 
-    // behavior.cpp — owner: Reshma. Wake up, then alternate idle/search; "Charlie" -> happy.
+    // behavior.cpp — owner: Reshma. Wake up, then alternate idle/search; "Charlie" -> happy;
+    // the laptop can hold a mood while it speaks a phrase (behavior_express).
     #include <stdio.h>
 
     #ifdef ARDUINO
@@ -519,12 +524,16 @@ code:
     static const uint32_t BEH_SEARCH_MS      = 4000;   // look around this long, then calm again
     static const uint32_t BEH_HAPPY_MS       = 2000;   // happy reaction to "Charlie"
     static const uint32_t BEH_AWAKE_BLUE     = 0x3C78FF;
+    static const uint32_t BEH_EXPRESS_MAX_MS = 15000;  // safety: laptop never said "done"
+    static const uint32_t BEH_HAPPY_REFRESH_MS = 1600; // re-start happy before eyes.* turns it back to calm (2 s)
 
     static BehaviorState g_beh_state = BEH_WAKE;
     static unsigned long g_beh_since = 0;
     static bool g_beh_wake_blinking = false;
+    static EyeMood g_beh_express_mood = MOOD_CALM;
+    static unsigned long g_beh_express_refresh = 0;
 
-    static const char* const BEH_NAMES[] = {"wake", "idle", "search", "happy"};
+    static const char* const BEH_NAMES[] = {"wake", "idle", "search", "happy", "express"};
 
     static void beh_enter(BehaviorState s) {
       g_beh_state = s;
@@ -534,7 +543,8 @@ code:
         case BEH_IDLE:   eyes_set_mood(MOOD_CALM); break;
         case BEH_SEARCH: eyes_set_mood(MOOD_SEARCHING); break;   // TODO(Sara): motion_set_mode(MODE_FOLLOW)
         case BEH_HAPPY:  eyes_set_mood(MOOD_HAPPY); break;       // TODO(Sara): motion_set_mode(MODE_COME)
-                                                                 // TODO(Wiam): audio_bark(2)
+                                                                 // (sound: laptop plays Wiam's "called" reaction)
+        case BEH_EXPRESS: eyes_set_mood(g_beh_express_mood); g_beh_express_refresh = g_beh_since; break;
       }
       char buf[64];
       snprintf(buf, sizeof buf, "{\"type\":\"robot.behavior\",\"state\":\"%s\"}", BEH_NAMES[s]);
@@ -542,6 +552,16 @@ code:
     }
 
     void behavior_begin() { beh_enter(BEH_WAKE); }
+
+    void behavior_express(EyeMood mood) {
+      if (mood >= MOOD_COUNT) return;
+      g_beh_express_mood = mood;
+      beh_enter(BEH_EXPRESS);
+    }
+
+    void behavior_express_done() {
+      if (g_beh_state == BEH_EXPRESS) beh_enter(BEH_IDLE);
+    }
 
     void behavior_tick() {
       if (mic_called()) { beh_enter(BEH_HAPPY); return; }     // "Charlie" wins in every state
@@ -558,6 +578,17 @@ code:
         case BEH_HAPPY:
           if (t >= BEH_HAPPY_MS) beh_enter(BEH_IDLE);
           return;
+        case BEH_EXPRESS: {                                // hold the mood while the laptop speaks
+          if (t >= BEH_EXPRESS_MAX_MS) { beh_enter(BEH_IDLE); return; }
+          unsigned long now = millis();
+          if (g_beh_express_mood == MOOD_HAPPY && now - g_beh_express_refresh >= BEH_HAPPY_REFRESH_MS) {
+            eyes_set_mood(MOOD_HAPPY);                     // keep happy for the whole phrase
+            g_beh_express_refresh = now;
+          } else if (g_beh_express_mood != MOOD_HAPPY && eyes_mood() != g_beh_express_mood) {
+            eyes_set_mood(g_beh_express_mood);
+          }
+          return;
+        }
         case BEH_IDLE:
           if (t >= BEH_IDLE_MS) { beh_enter(BEH_SEARCH); return; }
           break;
@@ -573,7 +604,7 @@ code:
     }
 
     BehaviorState behavior_state() { return g_beh_state; }
-    const char* behavior_state_name(BehaviorState s) { return s <= BEH_HAPPY ? BEH_NAMES[s] : "?"; }
+    const char* behavior_state_name(BehaviorState s) { return s <= BEH_EXPRESS ? BEH_NAMES[s] : "?"; }
 
     // ===== speaker check for the mic. Copy of firmware/robot/audio_hw.cpp =====
     // audio_hw.cpp — owner: Reshma (for the mic). The robot's speaker: Atech `speaker` module,
@@ -618,6 +649,16 @@ code:
     mic_begin();
     behavior_begin();
   loop: |
+    // Laptop actions (stand-in for Wanhui's comms dispatcher), sent by services/brain/express.py:
+    //   robot_express <mood>   hold this mood while the laptop speaks a phrase (max 15 s)
+    //   robot_express done     phrase finished: back to the calm/search cycle
+    if (atech_action == "robot_express") {
+      if (atech_value == "done") { behavior_express_done(); atechDone(); }
+      else {
+        for (int i = 0; i < MOOD_COUNT; i++)
+          if (atech_value == eyes_mood_name((EyeMood)i)) { behavior_express((EyeMood)i); atechDone(); break; }
+      }
+    }
     mic_tick();
     behavior_tick();
     eyes_tick();

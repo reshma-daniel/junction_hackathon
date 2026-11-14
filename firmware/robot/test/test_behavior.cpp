@@ -47,6 +47,26 @@ int main() {
   behavior_begin(); run(500);
   fake_called = true; run(10); CHECK(behavior_state() == BEH_HAPPY);
 
+  // laptop speaks the "called" phrase: happy held for the whole phrase (longer than 2 s), then idle
+  behavior_begin(); run(3100); CHECK(behavior_state() == BEH_IDLE);
+  fake_called = true; run(500); CHECK(behavior_state() == BEH_HAPPY);
+  behavior_express(MOOD_HAPPY); run(10);
+  CHECK(behavior_state() == BEH_EXPRESS && eyes_mood() == MOOD_HAPPY);
+  run(3500); CHECK(behavior_state() == BEH_EXPRESS && eyes_mood() == MOOD_HAPPY);
+  behavior_express_done(); run(10);
+  CHECK(behavior_state() == BEH_IDLE && eyes_mood() == MOOD_CALM);
+
+  // other emotions: mood held while speaking, no idle/search switching meanwhile
+  behavior_express(MOOD_PLEADING); run(6000);
+  CHECK(behavior_state() == BEH_EXPRESS && eyes_mood() == MOOD_PLEADING);
+  fake_talking = true; run(50); CHECK(eyes_mood() == MOOD_PLEADING);   // no listening overlay
+  fake_talking = false;
+  behavior_express_done(); run(10); CHECK(behavior_state() == BEH_IDLE);
+
+  // laptop never says done: back to idle after 15 s
+  behavior_express(MOOD_SAD); run(14900); CHECK(behavior_state() == BEH_EXPRESS);
+  run(200); CHECK(behavior_state() == BEH_IDLE && eyes_mood() == MOOD_CALM);
+
 
   if (fails) { printf("%d FAILED\n", fails); return 1; }
   printf("behavior: all tests passed\n");
