@@ -25,21 +25,21 @@ int main() {
   run(2500); CHECK(behavior_state() == BEH_WAKE && eyes_mood() == MOOD_COUNT);
   run(600);  CHECK(behavior_state() == BEH_IDLE && eyes_mood() == MOOD_CALM);
 
-  // nothing happens: idle 20 s -> search 6 s -> idle -> search ...
-  run(19800); CHECK(behavior_state() == BEH_IDLE);
-  run(300);   CHECK(behavior_state() == BEH_SEARCH && eyes_mood() == MOOD_SEARCHING);
-  run(6000);  CHECK(behavior_state() == BEH_IDLE && eyes_mood() == MOOD_CALM);
-  run(20100); CHECK(behavior_state() == BEH_SEARCH);
+  // nothing happens: idle 4 s -> search 4 s -> idle -> search ...
+  run(3800); CHECK(behavior_state() == BEH_IDLE);
+  run(300);  CHECK(behavior_state() == BEH_SEARCH && eyes_mood() == MOOD_SEARCHING);
+  run(4000); CHECK(behavior_state() == BEH_IDLE && eyes_mood() == MOOD_CALM);
+  run(4100); CHECK(behavior_state() == BEH_SEARCH);
 
   // "Charlie" during search -> happy 2 s -> idle, idle timer starts again
   fake_called = true; run(10);
   CHECK(behavior_state() == BEH_HAPPY && eyes_mood() == MOOD_HAPPY);
   run(2100);  CHECK(behavior_state() == BEH_IDLE && eyes_mood() == MOOD_CALM);
-  run(19000); CHECK(behavior_state() == BEH_IDLE);
-  run(1100);  CHECK(behavior_state() == BEH_SEARCH);
+  run(3000); CHECK(behavior_state() == BEH_IDLE);
+  run(1100); CHECK(behavior_state() == BEH_SEARCH);
 
   // speaking -> listening eyes, back to the state's mood after
-  run(6100); CHECK(behavior_state() == BEH_IDLE);
+  run(4100); CHECK(behavior_state() == BEH_IDLE);
   fake_talking = true;  run(50); CHECK(eyes_mood() == MOOD_LISTENING && behavior_state() == BEH_IDLE);
   fake_talking = false; run(50); CHECK(eyes_mood() == MOOD_CALM);
 

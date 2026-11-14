@@ -1,6 +1,6 @@
 // behavior.* — owner: Reshma. The robot's own small personality (works without the laptop).
 //
-//   power on -> WAKE (3 s) -> IDLE (20 s) <-> SEARCH (6 s)   ... forever, when nothing happens
+//   power on -> WAKE (3 s) -> IDLE (4 s) <-> SEARCH (4 s)   ... forever, when nothing happens
 //   "Charlie" (mic_called) in any state -> HAPPY (2 s) -> IDLE
 //   while someone is speaking in IDLE/SEARCH the eyes show "listening" (white)
 //

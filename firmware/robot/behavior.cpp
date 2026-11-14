@@ -13,8 +13,8 @@ unsigned long millis();   // provided by host test
 // ---- Tunables -----------------------------------------------------------------------
 static const uint32_t BEH_WAKE_SLEEPY_MS = 2000;   // half-closed eyes ...
 static const uint32_t BEH_WAKE_MS        = 3000;   // ... then two blinks, awake after 3 s
-static const uint32_t BEH_IDLE_MS        = 20000;  // calm this long, then look around
-static const uint32_t BEH_SEARCH_MS      = 6000;   // look around this long, then calm again
+static const uint32_t BEH_IDLE_MS        = 4000;   // calm this long, then look around
+static const uint32_t BEH_SEARCH_MS      = 4000;   // look around this long, then calm again
 static const uint32_t BEH_HAPPY_MS       = 2000;   // happy reaction to "Charlie"
 static const uint32_t BEH_AWAKE_BLUE     = 0x3C78FF;
 
