@@ -1,0 +1,31 @@
+# Demo-friendly thresholds. Switch to `production` values for real use.
+profile: demo
+
+demo:
+  still_threshold_s: 60          # sedentary this long -> prompt a walk
+  motion_energy_moving: 0.05     # g; above = moving (tune on real wearable)
+  walk_check_s: 20               # after "Follow me", user must be moving within this
+  max_reasks: 3                  # then back off
+  med_usual_time: "auto"         # learned; override e.g. "09:00" for the demo
+  med_late_after_s: 45           # seconds after usual time (demo-scaled)
+  dock_reach_mm: 150
+  obstacle_stop_mm: 250
+  follow_distance_mm: 400
+  wake_word: "charlie"
+
+production:
+  still_threshold_s: 2700        # 45 min
+  walk_check_s: 120
+  max_reasks: 2
+  med_late_after_s: 1800
+  decline_pct: 30                # activity drop vs 7-day mean
+  decline_days: 3
+  quiet_hours: ["22:00", "08:00"]
+
+gateway:
+  wearable_project_id: "FILL_ME"
+  robot_project_id: "FILL_ME"
+elevenlabs:
+  api_key_env: ELEVENLABS_API_KEY   # never commit keys
+  voice_id: "FILL_ME"               # pick a warm voice
+  tts_model: "eleven_flash_v2_5"
