@@ -2,3 +2,4 @@
 build/
 .pio/
 __pycache__/
+.venv/

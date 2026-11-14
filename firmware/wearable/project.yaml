@@ -1,0 +1,21 @@
+name: wearable
+board: 14port
+feedback: false
+modules:
+  - {id: icm40608, instance: icm40608_imu, port: 11}
+code:
+  globals: |
+    #include <Preferences.h>
+    #include <BLEDevice.h>
+    #include "../../ble_beacon.cpp"
+    // Relative to generated build/src/main.cpp. Edit wearable.cpp as the source.
+    #include "../../wearable.cpp"
+  setup: |
+    wearable_setup();
+    wearable_ble_begin();
+  loop: |
+    if (atech_action.length()) {
+      handle(atech_action.c_str(), atech_value.c_str());
+      atechDone();
+    }
+    wearable_tick();

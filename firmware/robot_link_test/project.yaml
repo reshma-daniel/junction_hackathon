@@ -1,0 +1,65 @@
+name: robot_link_test
+board: 14port
+feedback: false
+libraries:
+  - bblanchon/ArduinoJson@^7.4.2
+modules:
+  - {id: dc_motor, instance: m1, port: 1}
+  - {id: dc_motor, instance: m6, port: 6}
+  - {id: dc_motor, instance: m9, port: 9}
+  - {id: dc_motor, instance: m14, port: 14}
+code:
+  globals: |
+    #include <ArduinoJson.h>
+    #include <BLEDevice.h>
+    #include "../../ble_scanner.cpp"
+    #include "../../motion_wait.cpp"
+    static MotionDrive motionDrive;
+    static int appliedSpeed = 0;
+    static unsigned long lastStatus = 0;
+    static void applyMotors() {
+      if (appliedSpeed == motionDrive.speed) return;
+      appliedSpeed = motionDrive.speed;
+      // Calibrated: motor 1 negative PWM is counterclockwise = forward.
+      m1.setSpeed(-appliedSpeed); m6.setSpeed(-appliedSpeed);
+      m9.setSpeed(appliedSpeed); m14.setSpeed(appliedSpeed);
+    }
+    static void reportLinkStatus() {
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"sensor\",\"key\":\"link_status\",\"value\":{\"speed\":%d,\"target\":%d,\"armed\":%s,\"phase\":\"%s\",\"initial_rssi_dbm\":", motionDrive.speed, motionDrive.target, motionDrive.armed ? "true" : "false", motionDrive.phaseName());
+      if (motionDrive.initialRssiValid) Serial.printf("%.1f", motionDrive.initialRssi); else Serial.print("null");
+      Serial.print(",\"lead_initial_rssi_dbm\":");
+      if (motionDrive.leadRssiValid) Serial.printf("%.1f", motionDrive.leadInitialRssi); else Serial.print("null");
+      Serial.println("}}}");
+    }
+  setup: |
+    m1.setSpeed(0); m6.setSpeed(0); m9.setSpeed(0); m14.setSpeed(0);
+    robot_ble_begin();
+  loop: |
+    // Motion messages select the phase; fresh BLE RSSI adjusts travel speed.
+    if (atech_action == "wearable_motion") {
+      JsonDocument message;
+      DeserializationError error = deserializeJson(message, atech_value);
+      if (!error && message["moving"].is<bool>()) {
+        motionDrive.receive(message["moving"].as<bool>(), millis());
+        applyMotors();
+        reportLinkStatus();
+        atechDone();
+      }
+      // Invalid messages are rejected by the SDK, without refreshing the watchdog.
+    } else if (atech_action == "session_start") {
+      motionDrive.beginSession(); applyMotors(); reportLinkStatus(); atechDone();
+    } else if (atech_action == "robot_ping") {
+      motionDrive.ping(millis()); atechDone();
+    } else if (atech_action == "stop") {
+      motionDrive.stop(); applyMotors(); reportLinkStatus(); atechDone();
+    } else if (atech_action == "status") {
+      reportLinkStatus(); atechDone();
+    }
+    float rssi = 0;
+    bool rssiFresh = robot_ble_rssi(rssi);
+    motionDrive.tick(millis(), rssiFresh, rssi);
+    applyMotors();
+    robot_ble_tick();
+    if (millis() - lastStatus >= 1000) {
+      lastStatus = millis(); reportLinkStatus();
+    }
