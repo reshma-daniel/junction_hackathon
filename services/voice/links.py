@@ -122,6 +122,26 @@ class LaptopLink(Link):
         return True
 
 
+class LaptopStreamLink(Link):
+    """Laptop speakers without gaps between chunks (needed for live conversation)."""
+
+    def __init__(self):
+        import sounddevice as sd
+        self.stream = sd.RawOutputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16", blocksize=1024)
+        self.stream.start()
+
+    def play(self, pcm: bytes, stop: threading.Event) -> bool:
+        for c in chunks(pcm):
+            if stop.is_set():
+                return False
+            self.stream.write(c)  # blocks until the sound card takes it: real-time pacing
+        return True
+
+    def close(self) -> None:
+        self.stream.stop()
+        self.stream.close()
+
+
 class PrintLink(Link):
     def __init__(self, speed: float = 1.0):
         self.speed = speed
@@ -136,7 +156,10 @@ def make_link(kind: str, port: str | None = None, volume: float = 0.4) -> Link:
     if kind == "usb":
         return AtechUsbLink(port, volume)
     if kind == "laptop":
-        return LaptopLink()
+        try:
+            return LaptopStreamLink()
+        except Exception:  # no sounddevice / no output device: one file per clip with afplay
+            return LaptopLink()
     if kind == "print":
         return PrintLink()
     if kind == "bus":

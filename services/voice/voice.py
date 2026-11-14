@@ -13,6 +13,8 @@ Try it (robot on USB):
     python voice.py bark 2                  # woof woof
     python voice.py demo                    # every phrase and sound once
     python voice.py charlie                 # say "Kaamos" -> the `called` reaction
+    python voice.py chat                    # live conversation with the Kaamos agent (max ~90 s)
+    python voice.py charlie --chat          # say "Kaamos" -> bark -> live conversation
     python voice.py serve --listen          # for the brain: JSON in on stdin, events out on stdout
 
 Add --link laptop to hear it on the laptop instead of the robot, --port to pick the USB port.
@@ -101,6 +103,9 @@ class Voice:
             self.sound(m.get("name", ""), int(m.get("count", 1)))
         elif t == "voice.react":  # one of the 5 reactions (reactions.yaml)
             self.reactions.play(m.get("reaction", ""), int(m.get("attempt", 1)), m.get("late_s"), m.get("task"))
+        elif t == "voice.chat":  # live conversation with the agent (falls back to `called` offline)
+            from agent import chat
+            chat(self)
         elif t == "voice.stop":
             self.stop()
 
@@ -156,7 +161,7 @@ class Voice:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["preview", "playall", "list", "react", "reactions", "say", "text", "sound", "bark", "demo", "charlie", "serve"])
+    ap.add_argument("command", choices=["preview", "playall", "list", "chat", "react", "reactions", "say", "text", "sound", "bark", "demo", "charlie", "serve"])
     ap.add_argument("arg", nargs="?", help="reaction / intent / text / sound name / bark count")
     ap.add_argument("--attempt", type=int, default=1, help="react: reminder number (1 = first)")
     ap.add_argument("--late", type=float, help="react: seconds late (escalates too)")
@@ -165,6 +170,7 @@ def main() -> None:
     ap.add_argument("--port", help="robot USB port, e.g. /dev/cu.usbmodem1101 (default: first board)")
     ap.add_argument("--volume", type=float, default=0.4, help="robot speaker volume 0..1 (1.0 clips)")
     ap.add_argument("--listen", action="store_true", help="serve: also listen for 'Kaamos'")
+    ap.add_argument("--chat", action="store_true", help="charlie: start a live conversation instead of the reaction")
     ap.add_argument("--mic", help="microphone device name/number for the wake word (default: system)")
     args = ap.parse_args()
 
@@ -193,7 +199,10 @@ def main() -> None:
 
     voice = Voice(make_link(args.link, args.port, args.volume))
     try:
-        if args.command == "react":
+        if args.command == "chat":
+            from agent import chat
+            chat(voice, mic_device=args.mic)
+        elif args.command == "react":
             voice.reactions.play(args.arg or "called", args.attempt, args.late, args.task)
         elif args.command == "reactions":  # play every reaction, every level, once
             r = voice.reactions
@@ -230,9 +239,20 @@ def main() -> None:
         elif args.command == "charlie":
             from wake import WakeListener
 
+            busy = threading.Lock()
+
             def on_wake(word, conf):
                 voice.emit(msg("voice.wake", word=word, confidence=conf))
-                voice.reactions.play("called")
+                if not busy.acquire(blocking=False):  # already chatting: ignore
+                    return
+                try:
+                    if args.chat:
+                        from agent import chat
+                        chat(voice, mic_device=args.mic)
+                    else:
+                        voice.reactions.play("called")
+                finally:
+                    busy.release()
             print("Listening... say 'Kaamos' (Ctrl+C to quit)", file=sys.stderr)
             WakeListener(on_wake, is_muted=voice.mic_muted, device=args.mic).run()
         elif args.command == "serve":

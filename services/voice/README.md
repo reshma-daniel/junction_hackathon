@@ -37,6 +37,21 @@ in production). After `max_reasks` (shared/config.yaml) Kaamos gently backs off,
 Edit the steps in `reactions.yaml` and the words in `phrases.yaml`; then `python render.py` renders only
 the new lines.
 
+## Live conversation (ElevenLabs agent)
+Say "Kaamos" → happy bark → a short live conversation (max 90 s) in Kaamos's voice.
+```bash
+python agent_setup.py               # once: creates the "Kaamos" agent (id saved in agent.json)
+python voice.py chat --link laptop  # talk now
+python voice.py charlie --chat      # wake word -> bark -> conversation
+```
+- The agent: your voice (flash v2, required for English agents), warm 1–2 sentence replies, never
+  diagnoses, hands off to the MIELI crisis line (09 2525 0111) or 112 if someone mentions self-harm.
+- Tools it can call: `bark`, `set_eyes` (emits `robot.eyes` for the brain), `end_conversation`.
+- Laptop mic is muted while Kaamos speaks. Ends on "bye", 20 s of silence, or 90 s.
+- Offline / no agent: falls back to the pre-rendered greeting. Brain message: `{"type":"voice.chat"}`.
+- Change the personality in `agent_setup.py` (PROMPT), then `python agent_setup.py --update`.
+  The API key needs the Agents (write) permission.
+
 ## Setup (once)
 ```bash
 cd services/voice
