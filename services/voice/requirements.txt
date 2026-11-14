@@ -1,0 +1,6 @@
+atech
+pyyaml
+requests
+vosk
+sounddevice
+elevenlabs

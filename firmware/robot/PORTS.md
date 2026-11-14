@@ -4,10 +4,10 @@ Atech board: 12 ports (1-7, 9-11, 13-14); port 8 = USB-C, port 12 = reset. Doubl
 
 | Module | Port(s) | Position on robot | Owner | Notes |
 |---|---|---|---|---|
-| DC Motor front-left | 14 | top-left in photo (USB-C end = front) | Sara | + speed pushes it BACKWARD: flip sign |
-| DC Motor front-right | 6 | top-right | Sara | + speed = forward |
-| DC Motor rear-left | 9 | bottom-left | Sara | + speed pushes it BACKWARD: flip sign |
-| DC Motor rear-right | 1 | bottom-right | Sara | + speed = forward |
+| DC Motor front-left | ? | | Sara | |
+| DC Motor front-right | ? | | Sara | |
+| DC Motor rear-left | ? | | Sara | |
+| DC Motor rear-right | ? | | Sara | |
 | Speaker | ? | | Wiam | double-width |
 | Microphone | 2, 3 | | Reshma | double-width (I2S), instance `microphone` |
 | LED Grid LEFT eye | 13 | | Reshma | instance `eye_left`; if eyes look swapped, swap 13/10 in robot_eyes/project.yaml |
@@ -18,6 +18,3 @@ Atech board: 12 ports (1-7, 9-11, 13-14); port 8 = USB-C, port 12 = reset. Doubl
 
 Photo shows 3 distance sensors: two stacked on one side and one on the bottom edge. Decide which is the pill dock and which two face forward.
 Motor wiring: confirm which side is forward and the sign of +speed for left/right (Sara).
-
-Tested 2026-11-14 (Sara): forward = toward the USB-C end. Right motors (1, 6) +speed = forward; left motors (9, 14) +speed = backward, so left sign = -1.
-Needs a power bank: USB from the laptop alone did not run the motors.
