@@ -1,0 +1,19 @@
+name: robot_test
+board: 14port
+modules:
+- id: dc_motor
+  instance: m1
+  port: port_1
+- id: dc_motor
+  instance: m6
+  port: port_6
+- id: dc_motor
+  instance: m9
+  port: port_9
+- id: dc_motor
+  instance: m14
+  port: port_14
+code:
+  loop: '// idle: motors only move on laptop actions (m1_speed etc.)
+
+    '

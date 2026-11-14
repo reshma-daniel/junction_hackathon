@@ -1,0 +1,111 @@
+name: robot_motion
+board: 14port
+modules:
+- id: dc_motor
+  instance: m1
+  port: port_1
+- id: dc_motor
+  instance: m6
+  port: port_6
+- id: dc_motor
+  instance: m9
+  port: port_9
+- id: dc_motor
+  instance: m14
+  port: port_14
+- id: distance_sensor
+  instance: distance_sensor
+  port: port_11
+code:
+  globals: "// ===== motion (owner: Sara). Reference host-tested copy: firmware/robot/motion.cpp\
+    \ =====\n// FRONT = end where the distance sensor (port 7) faces = end opposite\
+    \ the USB-C.\n// Facing front: LEFT side = ports 6,1 ; RIGHT side = ports 14,9.\n\
+    // Measured: +speed on 6,1 pushes toward USB (= backward), on 14,9 toward front.\n\
+    static const int SIGN_LEFT  = -1;   // ports 6, 1\nstatic const int SIGN_RIGHT\
+    \ = +1;   // ports 14, 9\nstatic const bool COL_FLIP  = false; // flip if bearing\
+    \ is mirrored (test with a hand)\n\nstatic const int OBSTACLE_STOP_MM = 250, FOLLOW_MM\
+    \ = 400, FOLLOW_NEAR_MM = 300, FOLLOW_FAR_MM = 1200;\nstatic const int MIN_PWM\
+    \ = 170, CRUISE = 190, TURN_SPEED = 180, RAMP_PER_S = 500;\nstatic const int CLEAR_MM\
+    \ = OBSTACLE_STOP_MM + 150;\nstatic const unsigned long TURN_MIN_MS = 400, TURN_MAX_MS\
+    \ = 2500, COME_HOLD_MS = 500;\nstatic const unsigned long WATCHDOG_MS = 2000,\
+    \ STATE_MS = 1000;\nenum Mode { M_IDLE, M_WALK, M_FOLLOW, M_COME, M_STOP, M_MANUAL\
+    \ };\nstatic const char* MODE_NAMES[] = {\"idle\",\"walk\",\"follow\",\"come\"\
+    ,\"stop\",\"manual\"};\nstatic Mode g_mode = M_IDLE;\nstatic float cur_l = 0,\
+    \ cur_r = 0;\nstatic int tgt_l = 0, tgt_r = 0;\nstatic unsigned long last_ms =\
+    \ 0, last_state_ms = 0, last_rx = 0;\nstatic bool armed = false, out_nonzero =\
+    \ false, turning = false, wd_tripped = false;\nstatic int turn_dir = 1;\nstatic\
+    \ unsigned long turn_start = 0, come_since = 0;\n\nstruct Range { int left_mm,\
+    \ right_mm, min_mm; float bearing; bool blocked, valid; };\n\nstatic int clampi(int\
+    \ v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }\n\n// Local stand-in\
+    \ for Reshma's range_get(): 8x8 grid -> left/right halves + bearing.\nstatic Range\
+    \ range_get() {\n  Range r = {4000, 4000, 4000, 0, false, false};\n  if (!distance_sensor_ok\
+    \ || !distance_sensor.isReady()) return r;\n  int16_t g[64]; distance_sensor.getDistanceGrid(g);\n\
+    \  int best = 4000, bestc = 3;\n  for (int row = 1; row < 7; row++) for (int c\
+    \ = 0; c < 8; c++) {\n    int d = g[row * 8 + c];\n    if (d <= 0 || d >= 4000)\
+    \ continue;\n    if (c < 4) { if (d < r.left_mm) r.left_mm = d; } else { if (d\
+    \ < r.right_mm) r.right_mm = d; }\n    if (d < best) { best = d; bestc = c; }\n\
+    \  }\n  if (COL_FLIP) { int t = r.left_mm; r.left_mm = r.right_mm; r.right_mm\
+    \ = t; bestc = 7 - bestc; }\n  r.min_mm = best;\n  r.bearing = (bestc - 3.5f)\
+    \ / 3.5f;\n  r.blocked = best < OBSTACLE_STOP_MM;\n  r.valid = true;\n  return\
+    \ r;\n}\n\nstatic void hw_write(int left, int right) {   // left/right in robot\
+    \ frame, -255..255\n  left *= SIGN_LEFT; right *= SIGN_RIGHT;\n  m6.setSpeed(left);\
+    \  m1.setSpeed(left);\n  m14.setSpeed(right); m9.setSpeed(right);\n}\nstatic void\
+    \ set_target(int l, int r) { tgt_l = clampi(l, -255, 255); tgt_r = clampi(r, -255,\
+    \ 255); }\nstatic int apply_min_pwm(float v) {\n  if (v > -0.5f && v < 0.5f) return\
+    \ 0;\n  float a = v < 0 ? -v : v;\n  int o = MIN_PWM + (int)(a * (255 - MIN_PWM)\
+    \ / 255.0f);\n  return v < 0 ? -o : o;\n}\nstatic void motion_stop() { tgt_l =\
+    \ tgt_r = 0; cur_l = cur_r = 0; hw_write(0, 0); out_nonzero = false; }\nstatic\
+    \ void set_mode(Mode m) {\n  if (m == g_mode) return;\n  g_mode = m; turning =\
+    \ false; come_since = 0;\n  if (m == M_IDLE || m == M_STOP) motion_stop();\n}\n\
+    static bool set_mode_name(const String& n) {\n  if (n == \"idle\") set_mode(M_IDLE);\
+    \ else if (n == \"walk\") set_mode(M_WALK);\n  else if (n == \"follow\") set_mode(M_FOLLOW);\
+    \ else if (n == \"come\") set_mode(M_COME);\n  else if (n == \"stop\") set_mode(M_STOP);\
+    \ else return false;\n  return true;\n}\n\nstatic void do_walk(const Range& r,\
+    \ unsigned long now) {\n  if (turning) {\n    if ((now - turn_start >= TURN_MIN_MS\
+    \ && r.min_mm >= CLEAR_MM) || now - turn_start >= TURN_MAX_MS) turning = false;\n\
+    \    else { set_target(turn_dir * TURN_SPEED, -turn_dir * TURN_SPEED); return;\
+    \ }\n  }\n  if (r.blocked) {\n    turning = true; turn_start = now;\n    turn_dir\
+    \ = (r.left_mm > r.right_mm) ? -1 : 1;   // toward the freer side (+1 = turn right)\n\
+    \    set_target(0, 0); cur_l = cur_r = 0; return;\n  }\n  set_target(CRUISE, CRUISE);\n\
+    }\nstatic bool do_follow(const Range& r) {\n  if (r.min_mm < FOLLOW_NEAR_MM -\
+    \ 100 || r.min_mm > FOLLOW_FAR_MM) { set_target(0, 0); return false; }\n  int\
+    \ err = r.min_mm - FOLLOW_MM;\n  int fwd = abs(err) < 50 ? 0 : clampi(err / 4,\
+    \ 0, CRUISE);\n  int steer = (int)(r.bearing * 100.0f);\n  if (abs(steer) < 12)\
+    \ steer = 0;\n  set_target(fwd + steer, fwd - steer);\n  return true;\n}\nstatic\
+    \ void do_come(const Range& r, unsigned long now) {\n  bool t = do_follow(r);\n\
+    \  if (t && abs(r.min_mm - FOLLOW_MM) < 60) {\n    if (!come_since) come_since\
+    \ = now;\n    if (now - come_since >= COME_HOLD_MS) set_mode(M_IDLE);\n  } else\
+    \ come_since = 0;\n}\nstatic void ramp(float& c, int t, float step) {\n  if (c\
+    \ < t) { c += step; if (c > t) c = t; } else if (c > t) { c -= step; if (c < t)\
+    \ c = t; }\n}\nstatic void motion_tick() {\n  unsigned long now = millis();\n\
+    \  float dt = (now - last_ms) / 1000.0f; if (dt > 0.1f) dt = 0.1f; last_ms = now;\n\
+    \  Range r = range_get();\n  if (armed && now - last_rx > WATCHDOG_MS) {     \
+    \       // laptop silent -> stop\n    if (!wd_tripped) { motion_stop(); g_mode\
+    \ = M_IDLE; wd_tripped = true; }\n  } else {\n    wd_tripped = false;\n    bool\
+    \ needs_sensor = (g_mode == M_WALK || g_mode == M_FOLLOW || g_mode == M_COME);\n\
+    \    if (needs_sensor && !r.valid) set_target(0, 0);      // never drive blind\n\
+    \    else switch (g_mode) {\n      case M_WALK: do_walk(r, now); break;\n    \
+    \  case M_FOLLOW: do_follow(r); break;\n      case M_COME: do_come(r, now); break;\n\
+    \      case M_IDLE: case M_STOP: set_target(0, 0); break;\n      case M_MANUAL:\
+    \ break;\n    }\n    if (r.valid && r.blocked) {                          // safety:\
+    \ no forward motion < stop dist\n      int f = (tgt_l + tgt_r) / 2; if (f > 0)\
+    \ { tgt_l -= f; tgt_r -= f; }\n      float cf = (cur_l + cur_r) / 2; if (cf >\
+    \ 0) { cur_l -= cf; cur_r -= cf; }\n    }\n    float step = RAMP_PER_S * dt;\n\
+    \    ramp(cur_l, tgt_l, step); ramp(cur_r, tgt_r, step);\n    int ol = apply_min_pwm(cur_l),\
+    \ orr = apply_min_pwm(cur_r);\n    hw_write(ol, orr);\n    out_nonzero = (ol !=\
+    \ 0 || orr != 0);\n  }\n  if (now - last_state_ms >= STATE_MS) {\n    last_state_ms\
+    \ = now;\n    Serial.printf(\"{\\\"type\\\":\\\"event\\\",\\\"payload\\\":{\\\"\
+    event_type\\\":\\\"sensor\\\",\\\"key\\\":\\\"robot_state\\\",\\\"value\\\":\\\
+    \"%s,%d,%d,%d,%d\\\"}}\\n\",\n                  MODE_NAMES[g_mode], out_nonzero\
+    \ ? 1 : 0, r.valid ? r.min_mm : -1, r.left_mm, r.right_mm);\n  }\n}\n"
+  setup: 'last_ms = last_rx = millis();
+
+    '
+  loop: "// Laptop actions: robot_mode <idle|walk|follow|come|stop>, robot_drive \"\
+    l,r\", robot_ping\nif (atech_action.length()) {\n  if (atech_action == \"robot_mode\"\
+    ) {\n    last_rx = millis(); armed = true;\n    if (set_mode_name(atech_value))\
+    \ atechDone();\n  } else if (atech_action == \"robot_drive\") {\n    last_rx =\
+    \ millis(); armed = true;\n    int l = 0, r = 0;\n    if (sscanf(atech_value.c_str(),\
+    \ \"%d,%d\", &l, &r) == 2) {\n      g_mode = M_MANUAL; turning = false; set_target(l,\
+    \ r); atechDone();\n    }\n  } else if (atech_action == \"robot_ping\") {\n  \
+    \  last_rx = millis(); armed = true; atechDone();\n  }\n}\nmotion_tick();\n"
