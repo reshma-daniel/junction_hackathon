@@ -1,10 +1,12 @@
 # The robot firmware (main / integrator, owner: Reshma). Each module's code is pasted into globals
 # from firmware/robot/<module>.*; setup/loop only call begin()/tick(), no logic here.
-# Today: eyes + mic + behavior. To add: motion (Sara), range (Reshma), audio (Wiam), dock + comms (Wanhui).
+# Today: eyes + mic + behavior + speaker. To add: motion (Sara), range (Reshma), dock + comms (Wanhui).
+# Speaker: no custom code; Wiam's laptop voice plays through the built-in speaker_play_pcm action.
 name: robot_main
 board: 14port
 modules:
   - {id: microphone, instance: microphone, ports: [2, 3]}   # Reshma: mic
+  - {id: speaker,    instance: speaker,    ports: [4, 5]}   # Wiam: voice (speaker_play_pcm)
   - {id: neopixel,   instance: eye_left,   port: 13}        # Reshma: left eye
   - {id: neopixel,   instance: eye_right,  port: 10}        # Reshma: right eye
 code:
@@ -573,10 +575,31 @@ code:
     BehaviorState behavior_state() { return g_beh_state; }
     const char* behavior_state_name(BehaviorState s) { return s <= BEH_HAPPY ? BEH_NAMES[s] : "?"; }
 
-    // ===== stand-ins for modules not merged yet =====
-    // Wiam's audio.* will provide the real one (mic ignores our own speaker).
-    bool audio_is_playing() { return false; }
+    // ===== speaker check for the mic. Copy of firmware/robot/audio_hw.cpp =====
+    // audio_hw.cpp — owner: Reshma (for the mic). The robot's speaker: Atech `speaker` module,
+    // instance `speaker`, ports 4+5. Wiam's laptop code plays sound through the module's built-in
+    // actions (speaker_play_pcm / speaker_set_volume / speaker_stop), so there is no custom audio firmware.
+    //
+    // audio_is_playing() tells mic.* to ignore what it hears while the robot itself makes sound.
+    // Catch: speaker_play_pcm BLOCKS the loop until each ~64 ms chunk has played, so when our code
+    // runs again that chunk is already over and speaker.isPlaying() can be false. A loop pass that took
+    // much longer than normal therefore also counts as "playing". mic.* adds 1 s of quiet after that.
 
+    #ifdef ARDUINO
+    #include <Arduino.h>
+    #endif
+
+    static const unsigned long AUDIO_FROZEN_MS = 45;   // normal mic steps are ~20-30 ms apart
+
+    bool audio_is_playing() {
+      static unsigned long last = 0;
+      unsigned long now = millis();
+      bool frozen = last != 0 && now - last > AUDIO_FROZEN_MS;
+      last = now;
+      return speaker.isPlaying() || frozen;
+    }
+
+    // ===== stand-ins for modules not merged yet =====
     // Stand-in for Wanhui's comms_send(): flat JSON (type robot.sound -> key robot_sound) as an Atech event line.
     void comms_send(const char* json) {
       char key[32] = "robot";
