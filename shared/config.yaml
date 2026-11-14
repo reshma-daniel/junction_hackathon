@@ -22,6 +22,16 @@ production:
   decline_days: 3
   quiet_hours: ["22:00", "08:00"]
 
+# Demo runner (tools/demo): one day on a fast clock. Times are real-life times; only day_s changes.
+demo_clock:
+  day_s: 180                     # real seconds per clock day (86400 = real time)
+  wake_at: "08:00"               # wake-up call
+  pill_at: "09:00"               # daily pill
+  sleep_at: "22:00"              # bedtime: quiet until the next wake-up
+  move_after_min: 45             # still this long -> walk reminder
+  remind_again_min: 20           # between reminders
+  walk_backoff_min: 120          # after 3 walk reminders: quiet this long
+
 gateway:
   wearable_project_id: "FILL_ME"
   robot_project_id: "FILL_ME"

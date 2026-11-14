@@ -23,6 +23,19 @@ AGENT_FILE = HERE / "agent.json"
 sys.path.insert(0, str(HERE.parents[1]))
 from shared.protocol import MOODS  # noqa: E402  eye moods: docs/MESSAGES.md
 LOCAL_LIMIT_S = 95  # safety net on top of the agent's own 90 s limit
+_active: dict = {}  # the conversation in progress, so end_chat() can stop it from another thread
+
+
+def end_chat() -> bool:
+    """End the live conversation in progress (e.g. a Pause button). True if one was running."""
+    conv = _active.pop("conv", None)
+    if conv is None:
+        return False
+    try:
+        conv.end_session()
+    except Exception:
+        pass
+    return True
 
 
 def agent_id() -> str | None:
@@ -136,7 +149,7 @@ def chat(voice, mic_device=None, bark_first: bool = True) -> str | None:
             callback_agent_response=lambda t: print(f"Charlie: {t}", file=sys.stderr, flush=True),
             callback_user_transcript=lambda t: print(f"You:    {t}", file=sys.stderr, flush=True),
         )
-        conv_box["conv"] = conv
+        conv_box["conv"] = _active["conv"] = conv
         voice.emit({"type": "voice.chat_started", "ts": time.time()})
         conv.start_session()
         timer = threading.Timer(LOCAL_LIMIT_S, conv.end_session)
@@ -144,6 +157,7 @@ def chat(voice, mic_device=None, bark_first: bool = True) -> str | None:
         timer.start()
         cid = conv.wait_for_session_end()
         timer.cancel()
+        _active.pop("conv", None)
         voice.emit({"type": "voice.chat_done", "ts": time.time(), "conversation_id": cid})
         return cid
     except KeyboardInterrupt:
