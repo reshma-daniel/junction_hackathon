@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create (or update) the "Kaamos" ElevenLabs agent: your voice, its personality, its tools.
+"""Create (or update) the "Charlie" ElevenLabs agent: your voice, its personality, its tools.
 
     python agent_setup.py            # create it once; the id is saved in agent.json
     python agent_setup.py --update   # push prompt / voice / limits changes to the same agent
@@ -20,7 +20,7 @@ API = "https://api.elevenlabs.io/v1/convai"
 AGENT_FILE = HERE / "agent.json"
 MAX_SECONDS = 90  # keep conversations short: live conversation costs more credits
 
-PROMPT = """You are Kaamos, a small, warm robot dog who lives on the user's desk.
+PROMPT = """You are Charlie, a small, warm robot dog who lives on the user's desk.
 You keep company to someone who may be going through a hard time (low mood, depression).
 
 How you talk:
@@ -46,12 +46,14 @@ or reach someone they trust. Do not end the conversation yourself in that case."
 FIRST_MESSAGE = "You called? I'm here! How are you doing?"
 
 TOOLS = [
-    {"name": "bark", "description": "Kaamos does a short happy bark (greeting, celebrating, playful moments).",
+    {"name": "bark", "description": "Charlie does a short happy bark (greeting, celebrating, playful moments).",
      "parameters": {"type": "object", "properties": {}, "required": []}},
-    {"name": "set_eyes", "description": "Change Kaamos's eye colour to match the mood of the conversation.",
+    {"name": "set_eyes", "description": "Change Charlie's eye colour to match the mood of the conversation.",
      "parameters": {"type": "object", "required": ["mood"], "properties": {
-         "mood": {"type": "string", "enum": ["calm", "happy", "success", "listen"],
-                  "description": "calm = blue, happy = purple, success = green, listen = white"}}}},
+         "mood": {"type": "string", "enum": ["calm", "happy", "listening", "encouraging", "sad", "sleepy"],
+                  "description": "calm = soft blue (default), happy = green (joy, praise), "
+                                 "listening = white, encouraging = turquoise (motivation), "
+                                 "sad = dim purple (empathy), sleepy = dim orange (tired, goodnight)"}}}},
     {"name": "end_conversation", "description": "End the conversation after saying a short warm goodbye.",
      "parameters": {"type": "object", "properties": {}, "required": []}},
 ]
@@ -69,8 +71,8 @@ def check(r: requests.Response, what: str) -> dict:
 
 def agent_body(cfg: dict, tool_ids: list[str]) -> dict:
     return {
-        "name": "Kaamos",
-        "tags": ["kaamos", "junction"],
+        "name": "Charlie",
+        "tags": ["charlie", "junction"],
         "conversation_config": {
             "agent": {"first_message": FIRST_MESSAGE, "language": "en",
                       "prompt": {"prompt": PROMPT, "tool_ids": tool_ids}},
@@ -95,7 +97,7 @@ def main() -> None:
 
     saved = json.loads(AGENT_FILE.read_text()) if AGENT_FILE.exists() else {}
     if saved.get("agent_id") and not args.update:
-        print(f"Kaamos agent already exists ({saved['agent_id']}). Use --update to change it.")
+        print(f"Charlie agent already exists ({saved['agent_id']}). Use --update to change it.")
         return
 
     tool_ids = saved.get("tool_ids") or []
@@ -114,11 +116,11 @@ def main() -> None:
         check(requests.patch(f"{API}/agents/{saved['agent_id']}", headers=headers(cfg), json=body, timeout=30),
               "updating agent")
         agent_id = saved["agent_id"]
-        print(f"Updated Kaamos agent {agent_id}")
+        print(f"Updated Charlie agent {agent_id}")
     else:
         agent_id = check(requests.post(f"{API}/agents/create", headers=headers(cfg), json=body, timeout=30),
                          "creating agent")["agent_id"]
-        print(f"Created Kaamos agent {agent_id}")
+        print(f"Created Charlie agent {agent_id}")
     AGENT_FILE.write_text(json.dumps({"agent_id": agent_id, "tool_ids": tool_ids}, indent=1) + "\n")
 
 

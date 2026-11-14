@@ -1,10 +1,9 @@
-# What Kaamos says. One entry per intent (the brain sends `voice.say {intent}`;
+# What Charlie says. One entry per intent (the brain sends `voice.say {intent}`;
 # reactions.yaml uses them too). Rules: short (< 4 s), warm, never guilt, never pressure, varied.
 #
 # emotion -> an ElevenLabs v3 audio tag placed in front of the text when rendering
 # (see EMOTION_TAGS in render.py): warm, excited, happy, playful, soft, calm, curious.
 # A variant can override the intent's emotion:  - {text: "...", emotion: soft}
-# "Kaamos" is sent to ElevenLabs as "Kah-moss" so it sounds Finnish (PRONOUNCE in render.py).
 #
 # After editing, run `python render.py` again: only new or changed lines are rendered.
 
@@ -16,12 +15,12 @@ wake_greeting:
     - "Mmm, hi there. Ready for a gentle day?"
     - "Hello, sunshine. I'm here with you."
 
-# ---- called ("Kaamos!") ----  file name keeps "charlie" on purpose
+# ---- called ("Charlie!") ----
 greeting_charlie:
   emotion: excited
   variants:
     - "You called? I'm here!"
-    - "Hi hi! Did someone say Kaamos?"
+    - "Hi hi! Did someone say Charlie?"
 
 # ---- encourage (levels 1 / 2 / 3, then back off) ----
 walk_prompt:

@@ -22,11 +22,6 @@
     "file": "tts/greeting_charlie__28d7c7f1.wav",
     "text": "You called? I'm here!",
     "emotion": "excited"
-   },
-   {
-    "file": "tts/greeting_charlie__d25bf278.wav",
-    "text": "Hi hi! Did someone say Kaamos?",
-    "emotion": "excited"
    }
   ],
   "walk_prompt": [

@@ -1,4 +1,4 @@
-"""Kaamos's reactions (reactions.yaml): wake_up, called, encourage, pill, reward.
+"""Charlie's reactions (reactions.yaml): wake_up, called, encourage, pill, reward.
 
     from voice import Voice; from links import make_link; from reactions import Reactions
     r = Reactions(Voice(make_link("usb")))

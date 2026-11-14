@@ -1,4 +1,4 @@
-# Kaamos's few non-speech sounds, made by Kaamos's OWN voice with ElevenLabs v3 audio tags.
+# Charlie's few non-speech sounds, made by Charlie's OWN voice with ElevenLabs v3 audio tags.
 # Each line in `voice:` is one take; voice.py picks a different take each time.
 # Tip: a few real words around the tag keep v3 closer to the companion voice.
 # Rendered once, then free and offline. Keep this list short: only what reactions.yaml needs.

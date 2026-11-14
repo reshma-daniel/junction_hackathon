@@ -1,6 +1,6 @@
 # Wiam — Speaker & ElevenLabs
 
-**Goal:** Kaamos speaks warmly and clearly through its small speaker, and understands when someone calls "Charlie".
+**Goal:** Charlie speaks warmly and clearly through its small speaker, and understands when someone calls "Charlie".
 
 ## Tasks
 1. **ElevenLabs setup:** API key via env `ELEVENLABS_API_KEY` (never commit), choose a warm voice, set `voice_id` in shared/config.yaml.

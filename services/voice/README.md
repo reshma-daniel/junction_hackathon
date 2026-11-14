@@ -1,21 +1,21 @@
 # services/voice — Owner: Wiam
 
-Kaamos's voice: warm phrases, a few voice-made dog sounds, 5 reactions, and its name as a wake word.
+Charlie's voice: warm phrases, a few voice-made dog sounds, 5 reactions, and its name as a wake word.
 
 - **A library rendered once.** Every clip is generated with ElevenLabs a single time and saved in
   `library/`, which **is committed to git**. Teammates just `git pull`: nobody spends credits again.
   `render.py` only renders clips that are missing, so running it twice costs nothing.
-- **Hears its name offline.** "Kaamos" is detected locally (Vosk), free, nothing sent to the cloud.
+- **Hears its name offline.** "Charlie" is detected locally (Vosk), free, nothing sent to the cloud.
 
 ```
 phrases.yaml ─┐                           ┌─► robot speaker (USB: speaker_play_pcm chunks)
 sfx.yaml ─────┼─► render.py ─► library/ ─► voice.py ─┤
 reactions.yaml┘  (ElevenLabs, once)        (+ reactions.py)   └─► events: voice.done, voice.reacting, ...
-laptop mic ─► wake.py (Vosk, offline) ─► voice.wake {word:"kaamos"}  (muted while Kaamos makes sound)
+laptop mic ─► wake.py (Vosk, offline) ─► voice.wake {word:"charlie"}  (muted while Charlie makes sound)
 ```
 
 ## The 5 reactions
-| Reaction | When (brain state) | What Kaamos does | Eyes |
+| Reaction | When (brain state) | What Charlie does | Eyes |
 |---|---|---|---|
 | `wake_up` | start of day / leaving sleep (→ IDLE) | yawn, "Good morning! I'm awake." | calm, pulse |
 | `called` | `voice.wake` → COME_TO_USER | happy yips, "You called? I'm here!" | happy, blink |
@@ -25,7 +25,7 @@ laptop mic ─► wake.py (Vosk, offline) ─► voice.wake {word:"kaamos"}  (mu
 
 **Escalation** (`encourage`, `pill`): the brain sends `attempt` (1 = first reminder) and optionally
 `late_s`. Level = the higher of the two (late thresholds: 0 / 30 / 60 s in the demo profile, 0 / 15 / 30 min
-in production). After `max_reasks` (shared/config.yaml) Kaamos gently backs off, never guilt.
+in production). After `max_reasks` (shared/config.yaml) Charlie gently backs off, never guilt.
 
 | attempt | encourage | pill |
 |---|---|---|
@@ -38,16 +38,16 @@ Edit the steps in `reactions.yaml` and the words in `phrases.yaml`; then `python
 the new lines.
 
 ## Live conversation (ElevenLabs agent)
-Say "Kaamos" → happy bark → a short live conversation (max 90 s) in Kaamos's voice.
+Say "Charlie" → happy bark → a short live conversation (max 90 s) in Charlie's voice.
 ```bash
-python agent_setup.py               # once: creates the "Kaamos" agent (id saved in agent.json)
+python agent_setup.py               # once: creates the "Charlie" agent (id saved in agent.json)
 python voice.py chat --link laptop  # talk now
 python voice.py charlie --chat      # wake word -> bark -> conversation
 ```
 - The agent: your voice (flash v2, required for English agents), warm 1–2 sentence replies, never
   diagnoses, hands off to the MIELI crisis line (09 2525 0111) or 112 if someone mentions self-harm.
 - Tools it can call: `bark`, `set_eyes` (emits `robot.eyes` for the brain), `end_conversation`.
-- Laptop mic is muted while Kaamos speaks. Ends on "bye", 20 s of silence, or 90 s.
+- Laptop mic is muted while Charlie speaks. Ends on "bye", 20 s of silence, or 90 s.
 - Offline / no agent: falls back to the pre-rendered greeting. Brain message: `{"type":"voice.chat"}`.
 - Change the personality in `agent_setup.py` (PROMPT), then `python agent_setup.py --update`.
   The API key needs the Agents (write) permission.
@@ -67,7 +67,7 @@ python render.py              # render the missing clips, then commit library/
 python voice.py react pill --attempt 2   # one reaction at one level
 python voice.py react reward --task walk
 python voice.py reactions                # every reaction and level, once
-python voice.py charlie                  # say "Kaamos" -> `called` reaction
+python voice.py charlie                  # say "Charlie" -> `called` reaction
 python voice.py say walk_prompt          # a single phrase  |  sound yawn  |  bark 2  |  list
 python voice.py playall --link laptop    # every clip, labelled  |  preview walk_prompt = free, Mac voice
 ```
@@ -85,7 +85,7 @@ see the level and eyes without playing.
 | `{"type":"voice.say","intent":"walk_prompt"}` | `voice.done {intent, completed}` |
 | `{"type":"robot.bark","count":2}` / `{"type":"robot.say_clip","clip":"yawn"}` | plays it |
 | `{"type":"voice.stop"}` | cuts the current sound and drops the queue |
-| (with `--listen`) someone says "Kaamos" | `voice.wake {word:"kaamos", confidence}` |
+| (with `--listen`) someone says "Charlie" | `voice.wake {word:"charlie", confidence}` |
 
 `voice.react`, `voice.reacting` and `voice.reaction_done` are new: add them to docs/MESSAGES.md once the team agrees.
 
@@ -95,7 +95,7 @@ The only rule is that **one program at a time can open the robot's USB port**:
 - **Now:** voice.py opens the port itself (`--link usb`). Fine while the gateway isn't running.
 - **When everything runs together:** the gateway holds the port, so it shares its connection:
   `AtechUsbLink(board=gateway_board, lock=gateway_lock)`. Audio chunks and drive/eye commands then take
-  turns on the same cable (a command waits at most about 64 ms while Kaamos speaks).
+  turns on the same cable (a command waits at most about 64 ms while Charlie speaks).
 - **If the gateway runs as a separate program:** use `BusLink(send)`. It emits `robot.audio_out`, and the
   gateway forwards each one as the Atech action `speaker_play_pcm` (it already converts every team
   message into an Atech action, so this is one more line).
@@ -109,15 +109,15 @@ needed if the robot goes wireless and streaming stutters.
 ## Files
 | File | What it does |
 |---|---|
-| `phrases.yaml` | every line Kaamos says, per intent, with an emotion |
-| `sfx.yaml` | the 4 sounds (bark, happy_bark, yawn, excited_spin), made by Kaamos's voice with v3 tags like `[barking]` |
+| `phrases.yaml` | every line Charlie says, per intent, with an emotion |
+| `sfx.yaml` | the 4 sounds (bark, happy_bark, yawn, excited_spin), made by Charlie's voice with v3 tags like `[barking]` |
 | `reactions.yaml` | the 5 reactions: steps, escalation levels, eyes |
 | `render.py` | ElevenLabs once (sentences: multilingual v2; sounds: v3 audio tags, same voice), cleans audio, deletes clips of removed lines, checks every reaction's clips exist |
 | `library/` | the rendered clips + `manifest.json` (committed) |
 | `voice.py` | plays phrases/sounds (never the same variant twice in a row), mutes the mic while speaking, CLI + `serve` |
 | `reactions.py` | picks the level and plays a reaction |
 | `links.py` | where audio goes: robot USB (own or shared board), gateway bus, laptop, nowhere (tests) |
-| `wake.py` | offline "Kaamos" detection (Vosk listens for sound-alikes like "commas", "commerce"; "Charlie" still works) |
+| `wake.py` | offline "Charlie" detection (Vosk grammar: "charlie" / "charley") |
 
 ## Privacy
 Mic audio never leaves the laptop: the wake word is detected locally and nothing is stored.

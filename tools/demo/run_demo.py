@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Kaamos demo runner: the whole 3-minute demo with the real voice, no brain or sensors needed.
+"""Charlie demo runner: the whole 3-minute demo with the real voice, no brain or sensors needed.
 
     python tools/demo/run_demo.py                 # robot speaker over USB
     python tools/demo/run_demo.py --link laptop   # laptop speakers
     python tools/demo/run_demo.py --fast          # short timers, for rehearsing
-    python tools/demo/run_demo.py --listen        # also hear "Kaamos" on the mic
+    python tools/demo/run_demo.py --listen        # also hear "Charlie" on the mic
 
 Then open http://localhost:8765 : buttons stand in for the sensors (wearable moving, pill dock,
-"Kaamos!"), the page shows Kaamos's state and eye colour. Keyboard works on the page too.
+"Charlie!"), the page shows Charlie's state and eye colour. Keyboard works on the page too.
 
 Flow (timers from shared/config.yaml, demo profile):
   sitting still for still_threshold_s -> `encourage` (1, 2, 3, then back off), every walk_check_s
   "User walks" while prompting       -> `reward` (walk)
   "Pill time"                        -> `pill` (1, 2, 3, then back off), "Pill taken" -> `reward` (pill)
-  "Kaamos!"                          -> bark + live conversation (or the `called` reaction)
+  "Charlie!"                          -> bark + live conversation (or the `called` reaction)
 """
 from __future__ import annotations
 
@@ -34,8 +34,7 @@ from links import make_link  # noqa: E402
 from voice import Voice  # noqa: E402
 
 PAGE = Path(__file__).with_name("panel.html")
-COLORS = {"calm": "#2f6fff", "prompt": "#ffc83d", "success": "#2fd06b", "concern": "#ff4d4d",
-          "walk": "#27d3e6", "listen": "#ffffff", "happy": "#9b5de5"}
+from shared.protocol import COLORS, MOODS  # noqa: E402  eye moods: docs/MESSAGES.md
 
 
 class Demo:
@@ -50,7 +49,7 @@ class Demo:
         self.jobs: queue.Queue = queue.Queue()
         self.busy = False
         self.log: list[str] = []
-        self.eyes = {"color": COLORS["calm"], "pattern": "solid", "name": "calm"}
+        self.eyes = {"color": COLORS["calm"], "pattern": MOODS["calm"][1], "name": "calm"}
         self.reset()
         voice.emit = self.on_voice_event
         threading.Thread(target=self._worker, daemon=True).start()
@@ -63,8 +62,8 @@ class Demo:
             self.attempt = 0
             self.still_since = time.monotonic()
             self.next_check = None    # when to re-ask (set after a reaction finishes)
-            self.skip_pending = False # "next step" pressed while Kaamos was talking
-            self.note("Reset: Kaamos is idle, the user is sitting.")
+            self.skip_pending = False # "next step" pressed while Charlie was talking
+            self.note("Reset: Charlie is idle, the user is sitting.")
 
     def note(self, text: str):
         stamp = time.strftime("%H:%M:%S")
@@ -78,7 +77,7 @@ class Demo:
             name = m["eyes"].get("color", "calm")
             self.eyes = {"color": COLORS.get(name, name), "pattern": m["eyes"].get("pattern", "solid"), "name": name}
             lvl = f" level {m['level']}" if m.get("level") else ""
-            self.note(f"Kaamos reacts: {m['reaction']}{lvl}")
+            self.note(f"Charlie reacts: {m['reaction']}{lvl}")
         elif t == "robot.eyes":
             self.eyes = {"color": m.get("left", COLORS["calm"]), "pattern": m.get("pattern", "solid"), "name": "chat"}
         elif t in ("voice.chat_started", "voice.chat_done"):
@@ -94,7 +93,7 @@ class Demo:
             else:
                 status = "Idle, user sitting"
                 timer = f"walk prompt in {max(0, self.still_s - (now - self.still_since)):.0f} s"
-            return {"status": "Kaamos is talking..." if self.busy else status, "timer": timer,
+            return {"status": "Charlie is talking..." if self.busy else status, "timer": timer,
                     "eyes": self.eyes, "log": self.log, "busy": self.busy}
 
     # ---------- audio jobs (one at a time, in order) ----------
@@ -136,7 +135,7 @@ class Demo:
         while True:
             time.sleep(0.2)
             if self.busy or not self.jobs.empty():
-                continue  # never interrupt Kaamos; timers wait while it talks
+                continue  # never interrupt Charlie; timers wait while it talks
             now = time.monotonic()
             with self.lock:
                 if self.task is None and now - self.still_since >= self.still_s:
@@ -169,8 +168,8 @@ class Demo:
                 was_pill = self.task == "pill"
                 self.task, self.next_check, self.still_since = None, None, time.monotonic()
                 self.do("reward", lambda: self.voice.reactions.play("reward", task="pill" if was_pill else None))
-            elif name == "kaamos":
-                self.note('Someone said "Kaamos"')
+            elif name == "charlie":
+                self.note('Someone said "Charlie"')
                 if self.chat:
                     from agent import chat
                     self.do("chat", lambda: chat(self.voice))
@@ -181,7 +180,7 @@ class Demo:
             elif name == "skip":
                 if self.task and self.next_check is not None:
                     self.next_check = time.monotonic()
-                elif self.task:  # Kaamos is still talking: apply as soon as it finishes
+                elif self.task:  # Charlie is still talking: apply as soon as it finishes
                     self.skip_pending = True
                 else:
                     self.still_since = time.monotonic() - self.still_s
@@ -195,7 +194,7 @@ class Demo:
                 while not self.jobs.empty():
                     self.jobs.get_nowait()
                 self.voice.stop()
-                self.eyes = {"color": COLORS["calm"], "pattern": "solid", "name": "calm"}
+                self.eyes = {"color": COLORS["calm"], "pattern": MOODS["calm"][1], "name": "calm"}
                 self.reset()
 
 
@@ -233,8 +232,8 @@ def main():
     ap.add_argument("--port", help="robot USB port (default: first board)")
     ap.add_argument("--volume", type=float, default=0.4)
     ap.add_argument("--fast", action="store_true", help="short timers (10 s still, 8 s between reminders)")
-    ap.add_argument("--no-chat", action="store_true", help='"Kaamos" plays the called reaction, no live chat')
-    ap.add_argument("--listen", action="store_true", help='also detect "Kaamos" on the microphone')
+    ap.add_argument("--no-chat", action="store_true", help='"Charlie" plays the called reaction, no live chat')
+    ap.add_argument("--listen", action="store_true", help='also detect "Charlie" on the microphone')
     ap.add_argument("--http", type=int, default=8765)
     args = ap.parse_args()
 
@@ -242,7 +241,7 @@ def main():
     demo = Demo(voice, args.fast, chat=not args.no_chat)
     if args.listen:
         from wake import WakeListener
-        wl = WakeListener(lambda w, c: demo.event("kaamos"), is_muted=lambda: voice.mic_muted() or demo.busy)
+        wl = WakeListener(lambda w, c: demo.event("charlie"), is_muted=lambda: voice.mic_muted() or demo.busy)
         threading.Thread(target=wl.run, daemon=True).start()
     print(f"Demo panel: http://localhost:{args.http}   (Ctrl+C to quit)", flush=True)
     try:

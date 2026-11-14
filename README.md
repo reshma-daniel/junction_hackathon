@@ -1,6 +1,6 @@
 # Kaamos
 
-A desk companion dog-robot for people living with depression. It passively notices
+A desk companion dog-robot, called **Charlie**, for people living with depression. It passively notices
 behaviour (movement, medication) and responds with gentle spoken encouragement.
 Built on the Atech kit (ESP32-S3 modules) + a laptop "brain" + ElevenLabs voice.
 

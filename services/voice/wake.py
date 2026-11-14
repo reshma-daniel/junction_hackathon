@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Local wake word ("Kaamos") with Vosk: offline, free, no credits.
+"""Local wake word ("Charlie") with Vosk: offline, free, no credits.
 
 Vosk runs in *grammar mode*: it may only choose between our name's sound-alikes and "something else",
-which makes it fast and hard to fool. The small English model (~40 MB) downloads by itself
+which makes it fast and hard to fool. The dog is called Charlie. The small English model (~40 MB) downloads by itself
 on first run into ~/.cache/vosk.
 
     python wake.py                 # laptop mic, prints voice.wake events
@@ -19,11 +19,9 @@ import sys
 import time
 
 SAMPLE_RATE = 16000
-# "Kaamos" is not an English word, so Vosk cannot know it. These are what it hears instead
-# (tested on 5 voices x 4 phrasings: 20/20 detected). Don't add "calm as"/"calm": they fire on
-# "stay calm and...". "charlie" still works as a backup name.
-ALIASES = ["commas", "commerce", "comas", "calm us", "come us", "charlie"]
-NAME = "kaamos"
+# "Charlie" is in Vosk's English vocabulary; "charley" is the other common spelling it may pick.
+ALIASES = ["charlie", "charley"]
+NAME = "charlie"
 
 
 class WakeListener:
@@ -95,7 +93,7 @@ def main() -> None:
         import sounddevice as sd
         print(sd.query_devices())
         return
-    print("Listening... say 'Kaamos' (Ctrl+C to quit)", file=sys.stderr)
+    print("Listening... say 'Charlie' (Ctrl+C to quit)", file=sys.stderr)
     wl = WakeListener(lambda w, c: print(json.dumps({"type": "voice.wake", "ts": time.time(),
                                                      "word": w, "confidence": c}), flush=True),
                       device=args.mic, min_conf=args.min_conf)

@@ -25,7 +25,7 @@ EMOTION_TAGS = {
     "warm": "[warmly]", "excited": "[excited]", "happy": "[happily]", "playful": "[playfully]",
     "soft": "[softly]", "calm": "[calmly]", "curious": "[curious]",
 }
-PRONOUNCE = {"Kaamos": "Kah-moss"}  # spelled the way we want ElevenLabs to say it
+PRONOUNCE: dict[str, str] = {}  # word -> spelling for ElevenLabs, if a word comes out wrong
 
 
 def spoken(text: str) -> str:
@@ -68,7 +68,7 @@ def sound(cfg: dict, prompt: str, duration: float) -> bytes:
 
 
 def voice_sound(cfg: dict, text: str) -> bytes:
-    """A sound made by Kaamos's own voice: eleven_v3 performs audio tags like [barking]."""
+    """A sound made by Charlie's own voice: eleven_v3 performs audio tags like [barking]."""
     r = requests.post(f"{API}/text-to-speech/{cfg['voice_id']}", params={"output_format": "pcm_16000"},
                       headers={"xi-api-key": cfg["api_key"], "Content-Type": "application/json"}, timeout=60,
                       json={"text": text, "model_id": EXPRESSIVE_MODEL, "voice_settings": {"stability": 0.5}})
@@ -88,7 +88,7 @@ def plan(cfg: dict) -> list[dict]:
             jobs.append({"kind": "tts", "group": intent, "text": v["text"], "emotion": emotion,
                          "file": f"tts/{intent}__{h}.wav"})
     for name, entry in load_yaml("sfx.yaml").items():
-        for text in entry.get("voice", []):  # made by Kaamos's voice with v3 audio tags
+        for text in entry.get("voice", []):  # made by Charlie's voice with v3 audio tags
             h = short_hash(text, cfg.get("voice_id"), EXPRESSIVE_MODEL)
             jobs.append({"kind": "sfx", "group": name, "voice_text": text, "file": f"sfx/{name}__{h}.wav"})
         for i in range(int(entry.get("variants", 1)) if "prompt" in entry else 0):

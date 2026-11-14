@@ -1,11 +1,11 @@
-"""Live conversation with Kaamos (ElevenLabs agent, your voice), for at most ~90 seconds.
+"""Live conversation with Charlie (ElevenLabs agent, your voice), for at most ~90 seconds.
 
     python voice.py chat                 # happy bark, then talk (robot speaker over USB)
     python voice.py chat --link laptop   # same, on the laptop speakers
-    python voice.py charlie --chat       # say "Kaamos" -> bark -> conversation
+    python voice.py charlie --chat       # say "Charlie" -> bark -> conversation
 
-Mic = laptop mic (muted while Kaamos speaks, so it never hears itself).
-Kaamos's voice goes to the same place as the clips (robot USB or laptop).
+Mic = laptop mic (muted while Charlie speaks, so it never hears itself).
+Charlie's voice goes to the same place as the clips (robot USB or laptop).
 Tools the agent can use: bark, set_eyes (-> robot.eyes event), end_conversation.
 No internet / no agent: falls back to the pre-rendered `called` reaction.
 """
@@ -20,7 +20,8 @@ import time
 from common import HERE, config
 
 AGENT_FILE = HERE / "agent.json"
-EYES = {"calm": "#2f6fff", "happy": "#9b5de5", "success": "#2fd06b", "listen": "#ffffff"}
+sys.path.insert(0, str(HERE.parents[1]))
+from shared.protocol import MOODS  # noqa: E402  eye moods: docs/MESSAGES.md
 LOCAL_LIMIT_S = 95  # safety net on top of the agent's own 90 s limit
 
 
@@ -28,13 +29,13 @@ def agent_id() -> str | None:
     import os
     if AGENT_FILE.exists():
         return json.loads(AGENT_FILE.read_text()).get("agent_id")
-    return os.getenv("KAAMOS_AGENT_ID")
+    return os.getenv("CHARLIE_AGENT_ID") or os.getenv("CHARLIE_AGENT_ID")  # old name still accepted
 
 
 def _audio_interface_class():
     from elevenlabs.conversational_ai.conversation import AudioInterface
 
-    class KaamosAudio(AudioInterface):
+    class CharlieAudio(AudioInterface):
         """Laptop mic in; agent audio out through the Voice's link (robot or laptop)."""
 
         def __init__(self, voice, mic_device=None):
@@ -48,7 +49,7 @@ def _audio_interface_class():
             self.running = True
 
             def on_mic(data, frames, t, status):
-                # While Kaamos is speaking, send silence: it never hears (or interrupts) itself.
+                # While Charlie is speaking, send silence: it never hears (or interrupts) itself.
                 pcm = bytes(data)
                 input_callback(bytes(len(pcm)) if self.voice.mic_muted() or not self.q.empty() else pcm)
 
@@ -83,7 +84,7 @@ def _audio_interface_class():
             except Exception:
                 pass
 
-    return KaamosAudio
+    return CharlieAudio
 
 
 def chat(voice, mic_device=None, bark_first: bool = True) -> str | None:
@@ -107,8 +108,14 @@ def chat(voice, mic_device=None, bark_first: bool = True) -> str | None:
 
         def set_eyes(params):
             mood = params.get("mood", "calm")
-            voice.emit({"type": "robot.eyes", "ts": time.time(), "left": EYES.get(mood, EYES["calm"]),
-                        "right": EYES.get(mood, EYES["calm"]), "pattern": "solid"})
+            if mood not in MOODS:
+                mood = "calm"
+            colour, pattern, period = MOODS[mood]
+            eyes = {"type": "robot.eyes", "ts": time.time(), "left": colour, "right": colour,
+                    "pattern": pattern, "mood": mood}
+            if period:
+                eyes["period_ms"] = period
+            voice.emit(eyes)
             return f"eyes {mood}"
 
         def end_conversation(params):
@@ -126,7 +133,7 @@ def chat(voice, mic_device=None, bark_first: bool = True) -> str | None:
         conv = Conversation(
             ElevenLabs(api_key=cfg["api_key"]), aid, requires_auth=True,
             audio_interface=_audio_interface_class()(voice, mic_device), client_tools=tools,
-            callback_agent_response=lambda t: print(f"Kaamos: {t}", file=sys.stderr, flush=True),
+            callback_agent_response=lambda t: print(f"Charlie: {t}", file=sys.stderr, flush=True),
             callback_user_transcript=lambda t: print(f"You:    {t}", file=sys.stderr, flush=True),
         )
         conv_box["conv"] = conv

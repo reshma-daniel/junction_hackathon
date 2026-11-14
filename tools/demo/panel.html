@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kaamos demo panel</title>
+<title>Charlie demo panel</title>
 <style>
   :root { --bg:#101218; --card:#1a1d26; --text:#eef0f5; --muted:#9aa1b2; --line:#2a2f3c; --accent:#ffc83d; }
   * { box-sizing:border-box; }
@@ -38,8 +38,8 @@
 </head>
 <body>
 <main>
-  <h1>Kaamos demo panel</h1>
-  <p class="sub">The buttons stand in for the sensors. Kaamos's voice plays on the robot (or laptop).</p>
+  <h1>Charlie demo panel</h1>
+  <p class="sub">The buttons stand in for the sensors. Charlie's voice plays on the robot (or laptop).</p>
 
   <section class="top">
     <div class="eyes" id="eyes"><div class="eye"></div><div class="eye"></div></div>
@@ -54,7 +54,7 @@
     <button data-e="moved"><kbd>M</kbd><b>4 · User walks</b><span>Wearable moving → reward</span></button>
     <button data-e="pill_due"><kbd>P</kbd><b>5 · Pill time</b><span>Pill reminder starts</span></button>
     <button data-e="pill_taken"><kbd>T</kbd><b>6 · Pill taken</b><span>Dock reach → reward</span></button>
-    <button data-e="kaamos"><kbd>K</kbd><b>7 · "Kaamos!"</b><span>Bark + live conversation</span></button>
+    <button data-e="charlie"><kbd>C</kbd><b>7 · "Charlie!"</b><span>Bark + live conversation</span></button>
   </div>
 
   <h2>Control</h2>
@@ -67,7 +67,7 @@
   <ol id="log"></ol>
 </main>
 <script>
-  const keys = { w:"wake_up", s:"skip", n:"skip", m:"moved", p:"pill_due", t:"pill_taken", k:"kaamos", x:"stop", r:"reset" };
+  const keys = { w:"wake_up", s:"skip", n:"skip", m:"moved", p:"pill_due", t:"pill_taken", c:"charlie", x:"stop", r:"reset" };
   const send = (e) => fetch("/event/" + e, { method: "POST" }).then(refresh);
   document.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => send(b.dataset.e));
   document.addEventListener("keydown", ev => { const e = keys[ev.key.toLowerCase()]; if (e && !ev.metaKey && !ev.ctrlKey) send(e); });

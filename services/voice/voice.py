@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kaamos voice: plays library phrases, sounds and reactions on the robot, and hears "Kaamos".
+"""Charlie voice: plays library phrases, sounds and reactions on the robot, and hears "Charlie".
 
 Try it (robot on USB):
     python voice.py preview walk_prompt     # FREE: read the sentences aloud with the Mac's voice (no render)
@@ -12,9 +12,9 @@ Try it (robot on USB):
     python voice.py sound yawn              # one sound
     python voice.py bark 2                  # woof woof
     python voice.py demo                    # every phrase and sound once
-    python voice.py charlie                 # say "Kaamos" -> the `called` reaction
-    python voice.py chat                    # live conversation with the Kaamos agent (max ~90 s)
-    python voice.py charlie --chat          # say "Kaamos" -> bark -> live conversation
+    python voice.py charlie                 # say "Charlie" -> the `called` reaction
+    python voice.py chat                    # live conversation with the Charlie agent (max ~90 s)
+    python voice.py charlie --chat          # say "Charlie" -> bark -> live conversation
     python voice.py serve --listen          # for the brain: JSON in on stdin, events out on stdout
 
 Add --link laptop to hear it on the laptop instead of the robot, --port to pick the USB port.
@@ -169,7 +169,7 @@ def main() -> None:
     ap.add_argument("--link", default="usb", help="usb (robot) | laptop | print | bus")
     ap.add_argument("--port", help="robot USB port, e.g. /dev/cu.usbmodem1101 (default: first board)")
     ap.add_argument("--volume", type=float, default=0.4, help="robot speaker volume 0..1 (1.0 clips)")
-    ap.add_argument("--listen", action="store_true", help="serve: also listen for 'Kaamos'")
+    ap.add_argument("--listen", action="store_true", help="serve: also listen for 'Charlie'")
     ap.add_argument("--chat", action="store_true", help="charlie: start a live conversation instead of the reaction")
     ap.add_argument("--mic", help="microphone device name/number for the wake word (default: system)")
     args = ap.parse_args()
@@ -186,7 +186,7 @@ def main() -> None:
                 text = v if isinstance(v, str) else v["text"]
                 print(f"   - {text}")
                 if sys.platform == "darwin":
-                    subprocess.run(["say", "-v", "Samantha", "-r", "175", text.replace("Kaamos", "Kah-moss")])
+                    subprocess.run(["say", "-v", "Samantha", "-r", "175", text])
         return
 
     if args.command == "list":
@@ -222,7 +222,7 @@ def main() -> None:
         elif args.command == "say":
             voice.say(args.arg or "walk_prompt")
         elif args.command == "text":
-            voice.say("gentle_checkin", text=args.arg or "Hello, I'm Kaamos.")
+            voice.say("gentle_checkin", text=args.arg or "Hello, I'm Charlie.")
         elif args.command == "sound":
             voice.sound(args.arg or "bark")
         elif args.command == "bark":
@@ -253,7 +253,7 @@ def main() -> None:
                         voice.reactions.play("called")
                 finally:
                     busy.release()
-            print("Listening... say 'Kaamos' (Ctrl+C to quit)", file=sys.stderr)
+            print("Listening... say 'Charlie' (Ctrl+C to quit)", file=sys.stderr)
             WakeListener(on_wake, is_muted=voice.mic_muted, device=args.mic).run()
         elif args.command == "serve":
             if args.listen:

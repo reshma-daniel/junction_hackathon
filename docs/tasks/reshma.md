@@ -1,6 +1,6 @@
 # Reshma — Eyes, microphone, obstacles + all leftovers (brain & integration)
 
-**Goal:** Kaamos looks alive, hears, senses obstacles, and has a brain that ties everyone's parts into the demo.
+**Goal:** Charlie looks alive, hears, senses obstacles, and has a brain that ties everyone's parts into the demo.
 
 ## Part A — Robot sensing/expressing (firmware)
 1. **Eyes (`eyes.*`)**: two LED Grids (3x3 NeoPixel) as eyes. `eyes_set(left,right,pattern,period)` with patterns solid / blink / pulse / wink. Idle: slow random blinking in blue. Draw an eye shape (e.g. centre pixel or small cluster) not a full flood. Colours in MESSAGES.md.
