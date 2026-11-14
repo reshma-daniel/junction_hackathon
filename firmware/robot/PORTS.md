@@ -9,7 +9,7 @@ Atech board: 12 ports (1-7, 9-11, 13-14); port 8 = USB-C, port 12 = reset. Doubl
 | DC Motor rear-left | 9 | bottom-left | Sara | + speed pushes it BACKWARD: flip sign |
 | DC Motor rear-right | 1 | bottom-right | Sara | + speed = forward |
 | Speaker | ? | | Wiam | double-width |
-| Microphone | ? | | Reshma | |
+| Microphone | 2, 3 | | Reshma | double-width (I2S), instance `microphone` |
 | LED Grid LEFT eye | 13 | | Reshma | instance `eye_left`; if eyes look swapped, swap 13/10 in robot_eyes/project.yaml |
 | LED Grid RIGHT eye | 10 | | Reshma | instance `eye_right` |
 | Distance — front-left | ? | | Reshma | obstacles |
