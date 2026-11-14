@@ -219,117 +219,49 @@
  "sfx": {
   "bark": [
    {
-    "file": "sfx/bark__9d301363.wav",
-    "text": null,
+    "file": "sfx/bark__818e4461.wav",
+    "text": "[barking] Woof!",
     "emotion": null
    },
    {
-    "file": "sfx/bark__1c082c15.wav",
-    "text": null,
+    "file": "sfx/bark__082b759b.wav",
+    "text": "[barking] Arf!",
     "emotion": null
    },
    {
-    "file": "sfx/bark__f8d08f57.wav",
-    "text": null,
+    "file": "sfx/bark__50a556b2.wav",
+    "text": "[barking] Woof woof!",
     "emotion": null
    }
   ],
   "happy_bark": [
    {
-    "file": "sfx/happy_bark__3dd748c9.wav",
-    "text": null,
+    "file": "sfx/happy_bark__40b83992.wav",
+    "text": "[excited] [barking] Yip yip!",
     "emotion": null
    },
    {
-    "file": "sfx/happy_bark__2e9c5b36.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "curious_whine": [
-   {
-    "file": "sfx/curious_whine__d0e97d92.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "sniff": [
-   {
-    "file": "sfx/sniff__2af8916a.wav",
-    "text": null,
+    "file": "sfx/happy_bark__b26567a1.wav",
+    "text": "[happy] [barking] Arf arf!",
     "emotion": null
    }
   ],
   "yawn": [
    {
-    "file": "sfx/yawn__d1ce30cc.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "sleepy_snore": [
-   {
-    "file": "sfx/sleepy_snore__63059b9c.wav",
-    "text": null,
+    "file": "sfx/yawn__e8319918.wav",
+    "text": "[yawning] Aaah... hello.",
     "emotion": null
    }
   ],
   "excited_spin": [
    {
-    "file": "sfx/excited_spin__96c56c82.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "listening_chirp": [
-   {
-    "file": "sfx/listening_chirp__e960c4c7.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "success_chime": [
-   {
-    "file": "sfx/success_chime__0ed860f3.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "knock": [
-   {
-    "file": "sfx/knock__0a8760a2.wav",
-    "text": null,
+    "file": "sfx/excited_spin__16abf632.wav",
+    "text": "[excited] Yay! [barking] Arf arf!",
     "emotion": null
    },
    {
-    "file": "sfx/knock__050655c6.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "beg_whine": [
-   {
-    "file": "sfx/beg_whine__9d01b8ec.wav",
-    "text": null,
-    "emotion": null
-   },
-   {
-    "file": "sfx/beg_whine__ce038f86.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "soft_sigh": [
-   {
-    "file": "sfx/soft_sigh__6e3c60c5.wav",
-    "text": null,
-    "emotion": null
-   }
-  ],
-  "low_battery_whimper": [
-   {
-    "file": "sfx/low_battery_whimper__93f4f4d7.wav",
-    "text": null,
+    "file": "sfx/excited_spin__9f1c1cad.wav",
+    "text": "[happy] Woohoo! [barking] Woof!",
     "emotion": null
    }
   ]

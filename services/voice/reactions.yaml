@@ -24,7 +24,6 @@ reactions:
   called:                 # someone said "Kaamos"
     eyes: {color: happy, pattern: blink}
     steps:
-      - {sound: listening_chirp}
       - {sound: happy_bark}
       - {say: greeting_charlie}
 
@@ -35,32 +34,31 @@ reactions:
         steps: [{sound: happy_bark}, {say: walk_prompt}]
       2:
         eyes: {color: prompt, pattern: pulse}
-        steps: [{sound: curious_whine}, {say: walk_reask}]
+        steps: [{sound: bark}, {say: walk_reask}]
       3:
         eyes: {color: prompt, pattern: blink}
         steps: [{sound: bark, count: 2}, {say: walk_insist}]
     give_up:
       eyes: {color: calm, pattern: solid}
-      steps: [{sound: soft_sigh}, {say: walk_backoff}]
+      steps: [{say: walk_backoff}]
 
-  pill:                   # medication time: knocks and begs, more each time
+  pill:                   # medication time: calls for attention, more each time
     levels:
       1:
         eyes: {color: prompt, pattern: solid}
-        steps: [{sound: knock}, {say: pill_prompt}]
+        steps: [{sound: bark}, {say: pill_prompt}]
       2:
         eyes: {color: prompt, pattern: pulse}
-        steps: [{sound: beg_whine}, {say: pill_reask}]
+        steps: [{say: pill_reask}]
       3:
         eyes: {color: prompt, pattern: blink}
-        steps: [{sound: knock, count: 2}, {sound: beg_whine}, {say: pill_insist}]
+        steps: [{sound: bark, count: 2}, {say: pill_insist}]
     give_up:
       eyes: {color: calm, pattern: solid}
-      steps: [{sound: soft_sigh}, {say: pill_backoff}]
+      steps: [{say: pill_backoff}]
 
   reward:                 # the task is done. task = walk | pill | (anything else -> general)
     eyes: {color: success, pattern: wink}
     steps:
       - {sound: excited_spin}
       - {say: "{task}_praise"}
-      - {sound: success_chime}

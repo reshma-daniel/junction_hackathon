@@ -1,70 +1,24 @@
-# Non-speech sounds, generated once with the ElevenLabs Sound Effects API and cached.
-# After the first render they cost zero credits and work with no internet.
-#
-# name: {prompt, duration (s, 0.5-30), variants (how many different takes)}
-# Prompts: describe ONE clean sound, close mic, no background, no music.
+# Kaamos's few non-speech sounds, made by Kaamos's OWN voice with ElevenLabs v3 audio tags.
+# Each line in `voice:` is one take; voice.py picks a different take each time.
+# Tip: a few real words around the tag keep v3 closer to the companion voice.
+# Rendered once, then free and offline. Keep this list short: only what reactions.yaml needs.
 
-bark:
-  prompt: "a single short friendly bark from a small happy dog, close microphone, dry studio recording, no background noise"
-  duration: 0.6
-  variants: 3
+bark:            # attention / encouragement
+  voice:
+    - "[barking] Woof!"
+    - "[barking] Arf!"
+    - "[barking] Woof woof!"
 
-happy_bark:
-  prompt: "two quick excited playful yips from a small puppy, close microphone, dry, no background"
-  duration: 0.8
-  variants: 2
+happy_bark:      # being called, inviting to walk
+  voice:
+    - "[excited] [barking] Yip yip!"
+    - "[happy] [barking] Arf arf!"
 
-curious_whine:
-  prompt: "a short curious questioning whine from a small dog, rising pitch, close microphone, dry, no background"
-  duration: 1.0
-  variants: 1
+yawn:            # waking up
+  voice:
+    - "[yawning] Aaah... hello."
 
-sniff:
-  prompt: "a small dog sniffing quickly three times, close microphone, dry, no background"
-  duration: 1.0
-  variants: 1
-
-yawn:
-  prompt: "a small dog doing a long cute squeaky yawn, close microphone, dry, no background"
-  duration: 1.5
-  variants: 1
-
-sleepy_snore:
-  prompt: "a tiny dog snoring softly and peacefully, two breaths, close microphone, dry, no background"
-  duration: 2.5
-  variants: 1
-
-excited_spin:
-  prompt: "a small cute robot dog getting excited: happy yips with a playful rising electronic whirr, no background"
-  duration: 1.5
-  variants: 1
-
-listening_chirp:
-  prompt: "a short soft rising two-note electronic chirp, friendly robot acknowledging, clean, no reverb"
-  duration: 0.5
-  variants: 1
-
-success_chime:
-  prompt: "a gentle warm three-note rising chime, soft marimba, positive and calm, clean, no reverb"
-  duration: 1.0
-  variants: 1
-
-knock:
-  prompt: "two soft clear knocks with a small plastic paw on a wooden desk, close microphone, dry, no background"
-  duration: 0.6
-  variants: 2
-
-beg_whine:
-  prompt: "a small dog softly begging, a sweet gentle pleading whine, close microphone, dry, no background"
-  duration: 1.2
-  variants: 2
-
-soft_sigh:
-  prompt: "a small dog giving one soft content sigh through the nose, close microphone, dry, no background"
-  duration: 0.8
-  variants: 1
-
-low_battery_whimper:
-  prompt: "a small dog giving a soft sleepy whimper followed by a gentle descending electronic tone, no background"
-  duration: 1.5
-  variants: 1
+excited_spin:    # celebrating a finished task
+  voice:
+    - "[excited] Yay! [barking] Arf arf!"
+    - "[happy] Woohoo! [barking] Woof!"

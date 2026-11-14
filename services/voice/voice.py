@@ -4,6 +4,7 @@
 Try it (robot on USB):
     python voice.py preview walk_prompt     # FREE: read the sentences aloud with the Mac's voice (no render)
     python voice.py list                    # what is in the library
+    python voice.py playall --link laptop   # every variant of every phrase and sound, labelled
     python voice.py react pill --attempt 2  # a reaction: wake_up | called | encourage | pill | reward
     python voice.py react reward --task walk
     python voice.py reactions               # every reaction and level once
@@ -155,7 +156,7 @@ class Voice:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["preview", "list", "react", "reactions", "say", "text", "sound", "bark", "demo", "charlie", "serve"])
+    ap.add_argument("command", choices=["preview", "playall", "list", "react", "reactions", "say", "text", "sound", "bark", "demo", "charlie", "serve"])
     ap.add_argument("arg", nargs="?", help="reaction / intent / text / sound name / bark count")
     ap.add_argument("--attempt", type=int, default=1, help="react: reminder number (1 = first)")
     ap.add_argument("--late", type=float, help="react: seconds late (escalates too)")
@@ -202,6 +203,13 @@ def main() -> None:
                     print(f"> {name}" + (f" attempt {attempt}" if n else ""), file=sys.stderr)
                     r.play(name, attempt=attempt, task="walk" if name == "reward" else None)
                     time.sleep(0.6)
+        elif args.command == "playall":  # every single clip, with its text, to review the library
+            for kind in ([args.arg] if args.arg in ("tts", "sfx") else ["tts", "sfx"]):  # playall sfx = sounds only
+                for group, clips in voice.manifest[kind].items():
+                    for i, c in enumerate(clips, 1):
+                        print(f"[{kind}] {group} {i}/{len(clips)}: {c.get('text') or ''}", flush=True)
+                        voice._play(read_wav(CACHE / c["file"]))
+                        time.sleep(0.5)
         elif args.command == "say":
             voice.say(args.arg or "walk_prompt")
         elif args.command == "text":

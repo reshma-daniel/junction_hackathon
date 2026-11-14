@@ -67,6 +67,16 @@ def sound(cfg: dict, prompt: str, duration: float) -> bytes:
     return r.content
 
 
+def voice_sound(cfg: dict, text: str) -> bytes:
+    """A sound made by Kaamos's own voice: eleven_v3 performs audio tags like [barking]."""
+    r = requests.post(f"{API}/text-to-speech/{cfg['voice_id']}", params={"output_format": "pcm_16000"},
+                      headers={"xi-api-key": cfg["api_key"], "Content-Type": "application/json"}, timeout=60,
+                      json={"text": text, "model_id": EXPRESSIVE_MODEL, "voice_settings": {"stability": 0.5}})
+    if not r.ok or not r.content:
+        raise RuntimeError(f"{EXPRESSIVE_MODEL}: HTTP {r.status_code} {r.text[:200]}")
+    return r.content
+
+
 def plan(cfg: dict) -> list[dict]:
     """Every clip we want, with a file name that changes when its text/voice/prompt changes."""
     jobs = []
@@ -78,7 +88,10 @@ def plan(cfg: dict) -> list[dict]:
             jobs.append({"kind": "tts", "group": intent, "text": v["text"], "emotion": emotion,
                          "file": f"tts/{intent}__{h}.wav"})
     for name, entry in load_yaml("sfx.yaml").items():
-        for i in range(int(entry.get("variants", 1))):
+        for text in entry.get("voice", []):  # made by Kaamos's voice with v3 audio tags
+            h = short_hash(text, cfg.get("voice_id"), EXPRESSIVE_MODEL)
+            jobs.append({"kind": "sfx", "group": name, "voice_text": text, "file": f"sfx/{name}__{h}.wav"})
+        for i in range(int(entry.get("variants", 1)) if "prompt" in entry else 0):
             h = short_hash(entry["prompt"], entry.get("duration"), i)
             jobs.append({"kind": "sfx", "group": name, "prompt": entry["prompt"],
                          "duration": float(entry.get("duration", 1.0)), "file": f"sfx/{name}__{h}.wav"})
@@ -121,12 +134,12 @@ def main() -> None:
     if todo and not args.dry_run:
         if not cfg["api_key"]:
             sys.exit("ELEVENLABS_API_KEY is not set (put it in services/voice/.env).")
-        if n_tts and (not cfg.get("voice_id") or cfg["voice_id"] == "FILL_ME"):
+        if (n_tts or any("voice_text" in j for j in todo)) and (not cfg.get("voice_id") or cfg["voice_id"] == "FILL_ME"):
             sys.exit("No voice id: set ELEVENLABS_VOICE_ID in .env or voice_id in shared/config.yaml.")
 
     failed = 0
     for j in todo:
-        label = j.get("text") or j["prompt"][:60]
+        label = j.get("text") or j.get("voice_text") or j["prompt"][:60]
         print(f"  {'[dry]' if args.dry_run else '->'} {j['group']:<18} {label}")
         if args.dry_run:
             continue
@@ -134,6 +147,8 @@ def main() -> None:
             if j["kind"] == "tts":
                 pcm, model = tts(cfg, j["text"], j["emotion"])
                 j["model"] = model
+            elif "voice_text" in j:
+                pcm = voice_sound(cfg, j["voice_text"])
             else:
                 pcm = sound(cfg, j["prompt"], j["duration"])
             write_wav(CACHE / j["file"], clean_pcm(pcm))
@@ -146,7 +161,7 @@ def main() -> None:
     for j in jobs:
         if (CACHE / j["file"]).exists():
             manifest[j["kind"]].setdefault(j["group"], []).append(
-                {"file": j["file"], "text": j.get("text"), "emotion": j.get("emotion")})
+                {"file": j["file"], "text": j.get("text") or j.get("voice_text"), "emotion": j.get("emotion")})
     if not args.dry_run:
         # Delete clips whose line was removed or changed (e.g. a sentence you edited), so they never play.
         wanted = {j["file"] for j in jobs}

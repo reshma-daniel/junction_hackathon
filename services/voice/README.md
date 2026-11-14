@@ -1,6 +1,6 @@
 # services/voice — Owner: Wiam
 
-Kaamos's voice: warm phrases, dog sounds, 5 reactions, and its name as a wake word.
+Kaamos's voice: warm phrases, a few voice-made dog sounds, 5 reactions, and its name as a wake word.
 
 - **A library rendered once.** Every clip is generated with ElevenLabs a single time and saved in
   `library/`, which **is committed to git**. Teammates just `git pull`: nobody spends credits again.
@@ -17,11 +17,11 @@ laptop mic ─► wake.py (Vosk, offline) ─► voice.wake {word:"kaamos"}  (mu
 ## The 5 reactions
 | Reaction | When (brain state) | What Kaamos does | Eyes |
 |---|---|---|---|
-| `wake_up` | start of day / leaving sleep (→ IDLE) | yawn, "Good morning! I'm awake…" | calm, pulse |
-| `called` | `voice.wake` → COME_TO_USER | chirp, happy yips, "You called? I'm here!" | happy, blink |
+| `wake_up` | start of day / leaving sleep (→ IDLE) | yawn, "Good morning! I'm awake." | calm, pulse |
+| `called` | `voice.wake` → COME_TO_USER | happy yips, "You called? I'm here!" | happy, blink |
 | `encourage` | PROMPT_WALK, re-asks | escalates, see below | prompt |
 | `pill` | PROMPT_PILL, re-asks | escalates, see below | prompt |
-| `reward` | PRAISE (`task`: walk / pill / other) | excited spin, praise for that task, chime | success, wink |
+| `reward` | PRAISE (`task`: walk / pill / other) | "Yay! Arf arf!", praise for that task | success, wink |
 
 **Escalation** (`encourage`, `pill`): the brain sends `attempt` (1 = first reminder) and optionally
 `late_s`. Level = the higher of the two (late thresholds: 0 / 30 / 60 s in the demo profile, 0 / 15 / 30 min
@@ -29,10 +29,10 @@ in production). After `max_reasks` (shared/config.yaml) Kaamos gently backs off,
 
 | attempt | encourage | pill |
 |---|---|---|
-| 1 | happy yips + "Follow me, let's walk a little!" | knock + "Knock knock! It's time for your medicine." |
-| 2 | curious whine + "No rush. Just a few steps together?" | begging whine + gentle reminder |
-| 3 | woof woof + "Pretty please? Just to the window and back!" | knock knock + whine + "Please take your medicine?" |
-| 4+ | soft sigh + "That's okay. We can try again later." | soft sigh + "Okay. I'll remind you a little later." |
+| 1 | happy yips + "Follow me, let's walk a little!" | woof + "Knock knock! It's time for your medicine." |
+| 2 | woof + "No rush. Just a few steps together?" | gentle reminder |
+| 3 | woof woof + "…Just to the window and back!" | woof woof + "Please take your medicine?" |
+| 4+ | "That's okay. We can try again later." | "Okay. I'll remind you a little later." |
 
 Edit the steps in `reactions.yaml` and the words in `phrases.yaml`; then `python render.py` renders only
 the new lines.
@@ -54,6 +54,7 @@ python voice.py react reward --task walk
 python voice.py reactions                # every reaction and level, once
 python voice.py charlie                  # say "Kaamos" -> `called` reaction
 python voice.py say walk_prompt          # a single phrase  |  sound yawn  |  bark 2  |  list
+python voice.py playall --link laptop    # every clip, labelled  |  preview walk_prompt = free, Mac voice
 ```
 `--link laptop` plays on the laptop, `--port /dev/cu.usbmodemXXXX` picks the board, `--volume 0.5` (1.0 distorts).
 
@@ -94,9 +95,9 @@ needed if the robot goes wireless and streaming stutters.
 | File | What it does |
 |---|---|
 | `phrases.yaml` | every line Kaamos says, per intent, with an emotion |
-| `sfx.yaml` | prompts for barks, knocks, whines, yawns, chimes |
+| `sfx.yaml` | the 4 sounds (bark, happy_bark, yawn, excited_spin), made by Kaamos's voice with v3 tags like `[barking]` |
 | `reactions.yaml` | the 5 reactions: steps, escalation levels, eyes |
-| `render.py` | ElevenLabs once (v3 + emotion tag, fallback model; Sound Effects API), cleans audio, checks every reaction's clips exist |
+| `render.py` | ElevenLabs once (sentences: multilingual v2; sounds: v3 audio tags, same voice), cleans audio, deletes clips of removed lines, checks every reaction's clips exist |
 | `library/` | the rendered clips + `manifest.json` (committed) |
 | `voice.py` | plays phrases/sounds (never the same variant twice in a row), mutes the mic while speaking, CLI + `serve` |
 | `reactions.py` | picks the level and plays a reaction |
