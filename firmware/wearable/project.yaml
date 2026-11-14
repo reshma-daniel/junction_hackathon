@@ -1,0 +1,25 @@
+# Wearable (owner: Wanhui): the user's movement. 6-axis IMU, one reading per second to the laptop.
+# Event `wearable_motion`  value {"energy": <g>}: mean |acceleration - 1 g| over the last second.
+# Sitting ~0.00-0.02, walking with the board on the wrist/body ~0.1+. Threshold: shared/config.yaml story.motion_energy_moving
+# Board type: change `board:` if the wearable kit is not a 14-port frame (atech list-boards), the IMU is in port 11.
+name: wearable
+board: 14port
+modules:
+  - {id: icm40608, instance: imu, port: 11}
+code:
+  globals: |
+    #include <math.h>
+    static float w_sum = 0;
+    static int   w_n = 0;
+  loop: |
+    static EveryTimer sampler, reporter;
+    if (sampler.ready(50)) {                       // 20 samples per second
+      float ax = imu.readAccelX(), ay = imu.readAccelY(), az = imu.readAccelZ();
+      w_sum += fabsf(sqrtf(ax * ax + ay * ay + az * az) - 1.0f);
+      w_n++;
+    }
+    if (reporter.ready(1000)) {                    // once per second
+      float energy = w_n ? w_sum / w_n : 0.0f;
+      w_sum = 0; w_n = 0;
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"sensor\",\"key\":\"wearable_motion\",\"value\":{\"energy\":%.3f}}}\n", energy);
+    }

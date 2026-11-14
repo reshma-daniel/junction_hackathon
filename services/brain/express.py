@@ -63,12 +63,13 @@ class Charlie:
     def can_react(self) -> bool:
         return not self._busy.is_set() and time.monotonic() - self._quiet_since >= IGNORE_AFTER_S
 
-    def express(self, emotion: str, **overrides) -> None:
-        """Eyes and phrase together. Blocks until the phrase has finished."""
+    def express(self, emotion: str, mood: str | None = None, **overrides) -> None:
+        """Eyes and phrase together. Blocks until the phrase has finished.
+        `mood` forces the eye mood (e.g. "sleepy" for the wake-up, "pleading" for the move reminder)."""
         reaction, args = EMOTIONS[emotion]
         args = {**args, **overrides}
         plan = self.voice.reactions.plan(reaction, **args)
-        mood = None if emotion in ROBOT_DRIVES_EYES else (plan.get("eyes") or {}).get("color")
+        mood = mood or (None if emotion in ROBOT_DRIVES_EYES else (plan.get("eyes") or {}).get("color"))
         self._busy.set()
         try:
             if mood:
