@@ -19,7 +19,8 @@ The clock **waits while Charlie talks**, so a sentence never skips half an hour.
 | until 08:00 | Charlie sleeps (sleepy eyes, no reminders) | **Wake up now** (W) |
 | 08:00 | wake-up call: yawn + good morning | |
 | 09:00 | the head sensor has not seen a hand today → `pill` reminder 1, 2, 3 (every 20 min), then a gentle back-off: pill missed | **Take the pill** (T) = `robot.dock reach` → `reward` |
-| all day | no movement for 45 min → `encourage` 1, 2, 3, then back off and stay quiet 2 h | **Move** (M) = `wearable.motion` → `reward` |
+| all day | no movement for 45 min → `encourage` 1, 2, 3, then back off and stay quiet 2 h | **Start / Stop walking** (M) = `wearable.motion` `moving` true / false |
+| a walk | starts with a happy bark; done after the **walk goal** (15 min of walking, stops under 3 min allowed) → `reward` (walk). Ended early but ≥ 1 min → gentle "that's a win" (general praise), never guilt | |
 | 22:00 | bedtime: Charlie goes quiet until the next morning (a pill not taken by then = missed) | |
 
 - **One reminder at a time:** the pill goes first, the walk waits.
@@ -31,7 +32,7 @@ The clock **waits while Charlie talks**, so a sentence never skips half an hour.
   clock to the pill time. **New day** (R) starts again just before the wake-up. Pressing a button twice
   does not queue it twice.
 - Defaults: `demo_clock` in `shared/config.yaml` (`day_s`, `wake_at`, `pill_at`, `sleep_at`,
-  `move_after_min`, `remind_again_min`, `walk_backoff_min`). The panel changes them live.
+  `move_after_min`, `remind_again_min`, `walk_backoff_min`, `walk_goal_min`). The panel changes them live.
 
 ## Real sensors
 The buttons stand in for the sensors. Real sensors send the team messages (docs/MESSAGES.md):

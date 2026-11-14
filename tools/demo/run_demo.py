@@ -14,6 +14,8 @@ The clock stops while Charlie talks, so one sentence never skips half an hour.
   08:00  wake-up call: yawn + good morning (Charlie sleeps from bedtime until then)
   09:00  pill: dock not opened today -> `pill` reminder 1, 2, 3, then a gentle back-off (missed)
   day    no movement on the wearable for 45 min -> `encourage` 1, 2, 3, then back off
+         a walk counts once the user has walked "walk goal" (15 min); a short stop (< 3 min) is fine,
+         a shorter walk still gets a gentle "that's a win"
   22:00  bedtime: Charlie goes quiet until the next morning
 The dial keeps the last 24 h of marks: wake-up, pill taken / missed, walks, reminders.
 
@@ -48,8 +50,10 @@ from shared.protocol import COLORS, MOODS  # noqa: E402  eye moods: docs/MESSAGE
 PAGE = Path(__file__).with_name("panel.html")
 DAY = 86400
 HHMM = re.compile(r"([01]?\d|2[0-3]):([0-5]\d)")
-LIMITS = {"day_s": (60, DAY), "still_s": (60, 43200), "reask_s": (60, 43200)}
-NAMES = {"day_s": "1 day lasts", "still_s": "move after", "reask_s": "remind again after",
+LIMITS = {"day_s": (60, DAY), "still_s": (60, 43200), "reask_s": (60, 43200), "walk_goal_s": (60, 7200)}
+WALK_GRACE_S = 3 * 60     # clock seconds a walk may pause (traffic light, door) before it ends
+SHORT_WALK_MIN_S = 60     # a walk shorter than the goal but at least this long still gets a gentle praise
+NAMES = {"day_s": "1 day lasts", "still_s": "move after", "reask_s": "remind again after", "walk_goal_s": "walk goal",
          "wake_at": "wake-up", "sleep_at": "bedtime", "pill_at": "pill"}
 
 
@@ -116,6 +120,7 @@ class Demo:
             "pill_at": clock(tod_of(c.get("pill_at", "09:00")) or 9 * 3600),
             "still_s": float(c.get("move_after_min", 45)) * 60,       # clock seconds
             "reask_s": float(c.get("remind_again_min", 20)) * 60,     # clock seconds
+            "walk_goal_s": float(c.get("walk_goal_min", 15)) * 60,    # clock seconds of walking = a walk
         }
         self.backoff_s = float(c.get("walk_backoff_min", 120)) * 60  # after giving up: quiet this long
         self.max_reasks = int(p.get("max_reasks", 3))
@@ -186,7 +191,11 @@ class Demo:
             self.paused = False
             self.still_since = self.sim # clock time the user last moved
             self.walk_quiet_until = 0.0 # after a walk back-off: no walk reminder before this clock time
-            self.moving = False         # last wearable reading
+            self.moving = False         # last wearable reading (or the Start / Stop walking button)
+            self.walk_open = False      # a walk in progress (may be briefly paused)
+            self.walked = 0.0           # clock seconds walked in this walk, before the current stretch
+            self.walk_seg = None        # clock time the current stretch of walking started
+            self.walk_stop_at = None    # clock time the user stopped (the walk ends after WALK_GRACE_S)
             self.marks: list[dict] = []
             self.eyes = self._mood_eyes("calm" if self.awake else "sleepy")
             self.last_tick = time.monotonic()
@@ -293,6 +302,14 @@ class Demo:
             still = self.sim - self.still_since
             if not self.awake:
                 move = {"state": "", "text": "Resting", "detail": "no movement reminders at night", "progress": 0}
+            elif self.walk_open:
+                goal, done = s["walk_goal_s"], self._walked()
+                if self.moving:
+                    detail = f"{self.both(goal - done)} to go, Charlie follows along"
+                else:
+                    detail = f"stopped: the walk ends in {self.both(WALK_GRACE_S - (self.sim - self.walk_stop_at))} unless you move again"
+                move = {"state": "ok", "text": f"Walking {dur(done)} / {dur(goal)}", "detail": detail,
+                        "progress": done / goal}
             elif self.task == "walk":
                 move = {"state": "due", "text": f"Still for {dur(still)}", "detail": reminder(), "progress": 1}
             elif self.moving:
@@ -327,7 +344,7 @@ class Demo:
                     "marks": [{"t": m["t"], "kind": m["kind"], "label": m["label"]}
                               for m in self.marks if self.sim - m["sim"] < DAY - 60]}
             return {"status": status, "eyes": self.eyes, "log": self.log, "busy": self.busy,
-                    "paused": self.paused, "settings": s, "clock": dial, "wake": wake, "pill": pill, "move": move}
+                    "paused": self.paused, "walking": self.moving, "settings": s, "clock": dial, "wake": wake, "pill": pill, "move": move}
 
     # ---------- audio jobs (one at a time, in order) ----------
     def do(self, label: str, fn, after=None):
@@ -400,6 +417,29 @@ class Demo:
         self.note(f"Wake-up call ({source})")
         self.do("wake_up", lambda: self.voice.reactions.play("wake_up"))
 
+    def _walked(self) -> float:
+        return self.walked + (self.sim - self.walk_seg if self.moving and self.walk_seg is not None else 0.0)
+
+    def _end_walk(self, complete: bool):
+        """Walk goal reached, or stopped too long (lock held). Any real walk gets a kind word."""
+        walked = self._walked()
+        if self.moving:
+            self.walked, self.walk_seg = walked, self.sim
+        self.walk_open, self.walk_stop_at = False, None
+        self.still_since = self.sim
+        if self.task == "walk":
+            self.task, self.next_check = None, None
+        if complete:
+            self.mark("walk", f"walk done ({dur(walked)})")
+            self.note(f"Walk done: {dur(walked)} with Charlie")
+            self.do("reward", lambda: self.voice.reactions.play("reward", task="walk"))
+        elif walked >= SHORT_WALK_MIN_S:
+            self.mark("walk_short", f"short walk ({dur(walked)})")
+            self.note(f"Short walk: {dur(walked)} of {dur(self.settings['walk_goal_s'])}, still a win")
+            self.do("reward", lambda: self.voice.reactions.play("reward"))  # general praise, never guilt
+        else:
+            self.note(f"Walk too short to count ({dur(walked)})")
+
     def _ticker(self):
         while True:
             time.sleep(0.1)
@@ -427,6 +467,10 @@ class Demo:
         elif not self.awake:
             if wake_t <= tod < sleep_t and self.wake_day != day:
                 self._wake("clock")
+        elif self.walk_open and self.moving and self._walked() >= s["walk_goal_s"]:
+            self._end_walk(complete=True)
+        elif self.walk_open and not self.moving and self.sim - self.walk_stop_at >= WALK_GRACE_S:
+            self._end_walk(complete=False)
         elif self.task != "pill" and self.pill_day != day and tod >= pill_t:
             if self.task == "walk":
                 self.note("Pill time: the walk reminder waits")
@@ -451,12 +495,11 @@ class Demo:
         if t == "wearable.motion":
             moving = bool(m.get("moving")) or float(m.get("energy") or 0) > self.motion_g
             with self.lock:
-                started = moving and not self.moving
-                self.moving = moving
-                if moving:
-                    self.still_since = self.sim
-            if started:
-                self.event("moved", source="wearable")
+                if moving == self.moving:
+                    if moving:
+                        self.still_since = self.sim
+                    return
+            self.event("walk_start" if moving else "walk_stop", source="wearable")
         elif t == "robot.dock" and m.get("reach"):
             self.event("pill_taken", source="dock")
         elif t == "voice.wake" or (t == "robot.heard" and m.get("kind", "call") == "call"):
@@ -466,15 +509,27 @@ class Demo:
     def event(self, name: str, source: str = "button"):
         with self.lock:
             day = self.day()
-            if name == "moved":
+            if name == "moved":  # the Move button: start or stop walking
+                name = "walk_stop" if self.moving else "walk_start"
+            if name == "walk_start" and not self.moving:
+                self.moving, self.walk_seg = True, self.sim
                 self.still_since, self.walk_quiet_until = self.sim, 0.0
-                self.mark("walk", "moved")
-                if self.task == "walk":
-                    self.note(f"User is walking ({source})")
+                if self.task == "walk":  # the reminder worked: stop asking
                     self.task, self.next_check = None, None
-                    self.do("reward", lambda: self.voice.reactions.play("reward", task="walk"))
+                if self.walk_open:
+                    self.note(f"Walking again ({source})")
                 else:
-                    self.note(f"User moved ({source}): still timer restarts")
+                    self.walk_open, self.walked = True, 0.0
+                    self.mark("walk_start", "walk started")
+                    self.note(f"Walk started ({source}): goal {dur(self.settings['walk_goal_s'])}")
+                    self.do("bark", lambda: self.voice.sound("happy_bark"))  # Charlie comes along
+            elif name == "walk_stop" and self.moving:
+                self.moving = False
+                self.still_since = self.sim
+                if self.walk_open:
+                    self.walked += self.sim - self.walk_seg
+                    self.walk_seg, self.walk_stop_at = None, self.sim
+                    self.note(f"Stopped walking ({source}) after {dur(self.walked)}")
             elif name == "pill_taken":
                 early = self.task != "pill"
                 self.note(f"Dock opened ({source}): pill taken" + (" before the reminder" if early else ""))
@@ -520,9 +575,9 @@ class Demo:
             elif name == "pause":
                 if not self.paused:
                     self._silence()
-                    if self.task == "walk":       # the interrupted walk reminder starts over
-                        self.still_since = self.sim
-                    self.task, self.next_check, self.skip_pending = None, None, False
+                    if self.task:  # keep the reminder where it was; after Resume, wait one full interval
+                        self.next_check = self.sim + self.settings["reask_s"]
+                    self.skip_pending = False
                     self.paused = True
                     self.eyes = self._mood_eyes("calm" if self.awake else "sleepy")
                     self.note("Paused: Charlie stops, the clock stops")

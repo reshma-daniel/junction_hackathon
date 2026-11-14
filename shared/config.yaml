@@ -31,6 +31,7 @@ demo_clock:
   move_after_min: 45             # still this long -> walk reminder
   remind_again_min: 20           # between reminders
   walk_backoff_min: 120          # after 3 walk reminders: quiet this long
+  walk_goal_min: 15              # walking this long (short stops allowed) = a walk done
 
 gateway:
   wearable_project_id: "FILL_ME"

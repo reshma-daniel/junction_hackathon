@@ -90,7 +90,7 @@
 </div></div>
 <main>
   <h1>Charlie demo panel</h1>
-  <p class="sub">Every setting is a real-life time; only the clock runs faster. "Take the pill" and "Move" stand in for the head sensor and the wearable.</p>
+  <p class="sub">Every setting is a real-life time; only the clock runs faster. "Take the pill" and "Start walking" stand in for the head sensor and the wearable.</p>
 
   <section class="card top">
     <svg id="dial" viewBox="0 0 240 240" role="img" aria-label="24-hour clock"></svg>
@@ -107,7 +107,7 @@
         </select><span class="unit" id="speedx"></span><span id="saved"></span></div>
       <div class="legend">
         <span><i style="background:var(--wake)"></i>wake-up</span><span><i style="background:var(--ok)"></i>pill taken</span>
-        <span><i style="background:var(--due)"></i>pill missed</span><span><i style="background:var(--walk)"></i>moved</span>
+        <span><i style="background:var(--due)"></i>pill missed</span><span><i style="background:#9fd0ff"></i>walk started</span><span><i style="background:var(--walk)"></i>walk done</span><span><i style="background:#7fb4e6"></i>short walk</span>
         <span><i style="background:var(--muted)"></i>reminder</span><span><i style="background:var(--sleep)"></i>bedtime</span>
         <span><i style="background:var(--night);border:1px solid #3a4170"></i>night</span><span><i style="background:var(--dayring)"></i>day</span>
       </div>
@@ -140,12 +140,13 @@
     </section>
     <section class="card sit" id="move">
       <h3>2 · Movement check</h3>
-      <p class="why">No movement on the wearable for this long → walk reminder</p>
+      <p class="why">No movement on the wearable for this long → walk reminder. A walk counts after the walk goal.</p>
       <div class="big" data-k="text">–</div><div class="detail" data-k="detail"></div>
       <div class="bar"><i></i></div>
-      <button class="act" data-e="moved">Move<kbd>M</kbd></button>
+      <button class="act" id="walkbtn" data-e="moved">Start walking<kbd>M</kbd></button>
       <div class="settings">
         <div class="setting"><label for="still_m">Remind to move after</label><input id="still_m" type="number" min="1" step="1"><span class="unit">min</span></div>
+        <div class="setting"><label for="walk_m">Walk goal</label><input id="walk_m" type="number" min="1" step="1"><span class="unit">min</span></div>
       </div>
     </section>
   </div>
@@ -165,7 +166,7 @@
   const $ = (id) => document.getElementById(id);
   const DAY = 86400;
   const keys = { t:"pill_taken", m:"moved", c:"charlie", w:"wake_up", p:"pill_due", s:"skip", n:"skip", q:"pause", x:"pause", " ":"pause", r:"reset" };
-  const COLORS = { wake:"var(--wake)", pill:"var(--ok)", pill_missed:"var(--due)", walk:"var(--walk)", nudge:"var(--muted)", sleep:"var(--sleep)" };
+  const COLORS = { wake:"var(--wake)", pill:"var(--ok)", pill_missed:"var(--due)", walk:"var(--walk)", walk_start:"#9fd0ff", walk_short:"#7fb4e6", nudge:"var(--muted)", sleep:"var(--sleep)" };
   let loaded = false, clockState = null, clockAt = 0;
 
   // ---------- settings: applied as soon as a field changes ----------
@@ -174,6 +175,7 @@
     for (const id of ["wake_at", "sleep_at", "pill_at"]) if ($(id).value) out[id] = $(id).value;
     if (+$("still_m").value > 0) out.still_s = +$("still_m").value * 60;
     if (+$("reask_m").value > 0) out.reask_s = +$("reask_m").value * 60;
+    if (+$("walk_m").value > 0) out.walk_goal_s = +$("walk_m").value * 60;
     return out;
   }
   async function apply() {
@@ -181,7 +183,7 @@
     $("saved").textContent = "saved"; setTimeout(() => $("saved").textContent = "", 1200);
     loaded = false; refresh();
   }
-  ["day_s", "wake_at", "sleep_at", "pill_at", "still_m", "reask_m"].forEach(id => $(id).addEventListener("change", apply));
+  ["day_s", "wake_at", "sleep_at", "pill_at", "still_m", "reask_m", "walk_m"].forEach(id => $(id).addEventListener("change", apply));
 
   const send = (e) => fetch("/event/" + e, { method: "POST" }).then(refresh);
   document.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => send(b.dataset.e));
@@ -218,7 +220,7 @@
          + rim(c.sleep, "var(--sleep)", "bedtime " + hhmm(c.sleep));
     // what happened in the last 24 h, on the day ring
     for (const m of c.marks) {
-      const [x, y] = pt(m.t, R), r = m.kind === "nudge" ? 3 : 5;
+      const [x, y] = pt(m.t, R), r = (m.kind === "nudge" || m.kind === "walk_start") ? 3 : 5;
       svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${COLORS[m.kind] || "#fff"}" stroke="#141823" stroke-width="1.5"><title>${hhmm(m.t)} ${m.label}</title></circle>`;
     }
     svg += `<line id="hand" x1="${C}" y1="${C}" x2="${C}" y2="${C - R}" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`;
@@ -256,11 +258,12 @@
       eyes.style.setProperty("--period", (s.eyes.period_ms || 3000) + "ms");
       eyes.querySelectorAll(".eye").forEach(el => { el.style.background = s.eyes.color; el.style.boxShadow = "0 0 18px " + s.eyes.color + "88"; });
       card("wake", s.wake); card("pill", s.pill); card("move", s.move);
+      const wb = $("walkbtn"); wb.firstChild.textContent = s.walking ? "Stop walking" : "Start walking";
       const p = $("pause"); p.firstChild.textContent = s.paused ? "Resume" : "Pause"; p.classList.toggle("resume", s.paused);
       if (!loaded) {
         const st = s.settings;
         $("day_s").value = String(st.day_s); $("wake_at").value = st.wake_at; $("sleep_at").value = st.sleep_at; $("pill_at").value = st.pill_at;
-        $("still_m").value = Math.round(st.still_s / 60); $("reask_m").value = Math.round(st.reask_s / 60);
+        $("still_m").value = Math.round(st.still_s / 60); $("reask_m").value = Math.round(st.reask_s / 60); $("walk_m").value = Math.round(st.walk_goal_s / 60);
         $("speedx").textContent = st.day_s >= DAY ? "" : `(1 hour = ${+(st.day_s / 24).toFixed(1)} s)`;
         loaded = true;
       }
