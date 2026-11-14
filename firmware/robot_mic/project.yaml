@@ -1,0 +1,521 @@
+name: robot_mic
+board: 14port
+modules:
+  - {id: microphone, instance: microphone, ports: [2, 3]}   # I2S mic, 2 adjacent ports
+  - {id: neopixel,   instance: eye_left,   port: 13}        # LED Grid, left eye
+  - {id: neopixel,   instance: eye_right,  port: 10}        # LED Grid, right eye
+code:
+  globals: |
+    // ===== eyes (owner: Reshma). Copy of firmware/robot/eyes.h + eyes.cpp + eyes_hw.cpp: edit those, then re-paste here =====
+    // eyes.* — owner: Reshma. The robot's two eyes: 2x LED Grid (3x3 NeoPixel), ports 13 and 10.
+    // Contract: docs/MESSAGES.md (robot.eyes). Moods: docs/tasks/reshma.md.
+    //
+    //   Mood         Colour        How it moves
+    //   calm         soft blue     slow blink: 1.5 s on, 1.5 s off
+    //   listening    bright white  steady
+    //   happy        green         very fast blink (0.1 s on/off) for 2 s, then back to calm
+    //   pleading     warm amber    blink once a second: 0.5 s on, 0.5 s off
+    //   encouraging  turquoise     steady, with a quick double blink every 2 s
+    //   sad          dim purple    very slow, faint glow (6 s per cycle)
+    //   sleepy       dim orange    only the middle row lit, like half-closed eyes
+    //   searching    pale blue     a bar sweeping side to side across both eyes (0.3 s per step)
+    //
+    // Pixels are numbered 0..8 row by row (0 1 2 / 3 4 5 / 6 7 8), row 0 at the top.
+    #include <stdint.h>
+
+    enum EyeMood : uint8_t {
+      MOOD_CALM = 0,
+      MOOD_LISTENING,
+      MOOD_HAPPY,
+      MOOD_PLEADING,
+      MOOD_ENCOURAGING,
+      MOOD_SAD,
+      MOOD_SLEEPY,
+      MOOD_SEARCHING,
+      MOOD_COUNT
+    };
+
+    enum EyePattern : uint8_t {
+      PAT_SOLID = 0,     // steady
+      PAT_BLINK,         // hard on/off, half the period each
+      PAT_BREATHE,       // slow smooth brighten/dim
+      PAT_PULSE,         // quick beat: sharp rise, slower fade
+      PAT_SPARKLE,       // random twinkling pixels
+      PAT_DOUBLE_BLINK,  // steady + two quick blinks each period
+      PAT_GLOW,          // very slow, faint breathing
+      PAT_HALF,          // middle row only
+      PAT_SWEEP,         // one column lit, sweeping left<->right across both eyes
+      PAT_COUNT
+    };
+
+    // ---- Main API ---------------------------------------------------------------
+    void eyes_begin();                          // call once in setup
+    void eyes_tick();                           // call every loop; non-blocking, redraws every ~30 ms
+
+    void eyes_set_mood(EyeMood mood);           // preferred: one of the moods above
+    bool eyes_set_mood_name(const char* name);  // "calm", "happy", ... ; false if unknown
+    EyeMood eyes_mood();
+    const char* eyes_mood_name(EyeMood mood);
+
+    // Raw form of robot.eyes: any colour (0xRRGGBB) per eye + pattern. period_ms 0 = pattern default.
+    void eyes_set(uint32_t left_rgb, uint32_t right_rgb, EyePattern pattern, uint16_t period_ms);
+    bool eyes_pattern_from_name(const char* name, EyePattern* out);  // "solid", "breathe", ...
+
+    // ---- Hardware layer (eyes_hw.cpp) ---------------------------------------------
+    // Only place that touches the Atech LED Grid API. Colours are 0xRRGGBB, already scaled.
+    void eyes_hw_begin();
+    void eyes_hw_show(const uint32_t left[9], const uint32_t right[9]);
+
+    // eyes.cpp — owner: Reshma. Mood -> colour + animation for the two 3x3 LED grids.
+    #include <math.h>
+    #include <string.h>
+
+    #ifdef ARDUINO
+    #include <Arduino.h>
+    #else
+    unsigned long millis();   // provided by host test
+    #endif
+
+    // ---- Tunables -------------------------------------------------------------------
+    static const uint16_t FRAME_MS        = 30;     // redraw rate (~33 fps)
+    static const uint32_t HAPPY_MS        = 2000;   // happy blinking lasts this long, then calm
+    static const uint16_t SPARKLE_STEP_MS = 90;     // new twinkle pattern this often
+    static const uint16_t BLINK_MS        = 100;    // one quick blink (off time)
+
+    // Default period per pattern (ms). Index = EyePattern.
+    static const uint16_t DEFAULT_PERIOD[PAT_COUNT] = {
+      0,     // solid
+      1000,  // blink: one on+off cycle
+      4000,  // breathe: one slow breath
+      1000,  // pulse: about once a second
+      0,     // sparkle (uses SPARKLE_STEP_MS)
+      2000,  // double_blink: every 2 s
+      6000,  // glow: very slow
+      0,     // half
+      3000,  // sweep: full left->right->left cycle (10 steps)
+    };
+
+    // ---- Mood table: colour (0xRRGGBB) + pattern + period. Each mood blinks at its own speed ----
+    struct MoodSpec { const char* name; uint32_t rgb; EyePattern pattern; uint16_t period_ms; };
+    static const MoodSpec MOODS[MOOD_COUNT] = {
+      {"calm",        0x3C78FF, PAT_BLINK,        3000},  // soft blue, slow blink 1.5 s on / 1.5 s off
+      {"listening",   0xFFFFFF, PAT_SOLID,           0},  // bright white, steady
+      {"happy",       0x1EFF3C, PAT_BLINK,         200},  // green, very fast blink (2 s, then calm)
+      {"pleading",    0xFF8C00, PAT_BLINK,        1000},  // warm amber, blink once a second
+      {"encouraging", 0x28E0D0, PAT_DOUBLE_BLINK, 2000},  // turquoise, double blink every 2 s
+      {"sad",         0x7828C8, PAT_GLOW,         6000},  // dim purple, very slow faint glow
+      {"sleepy",      0x401900, PAT_HALF,            0},  // dim orange, middle row only
+      {"searching",   0x96C8FF, PAT_SWEEP,        3000},  // pale blue bar, 0.3 s per step
+    };
+
+    static const char* const PATTERN_NAMES[PAT_COUNT] = {
+      "solid", "blink", "breathe", "pulse", "sparkle", "double_blink", "glow", "half", "sweep",
+    };
+
+    // ---- State ------------------------------------------------------------------------
+    static EyeMood    g_mood = MOOD_COUNT;        // MOOD_COUNT = custom (set via eyes_set)
+    static uint32_t   g_rgb[2] = {0, 0};          // [0] left, [1] right
+    static EyePattern g_pattern = PAT_SOLID;
+    static uint16_t   g_period = 0;
+    static unsigned long g_since = 0;             // animation start
+    static unsigned long g_last_frame = 0;
+    static bool       g_happy_timer = false;
+    static unsigned long g_happy_until = 0;
+    static bool       g_dirty = true;             // force a redraw on next tick
+    static uint32_t   g_frame[2][9];
+    static uint32_t   g_shown[2][9];
+
+    // ---- Helpers ------------------------------------------------------------------------
+    static uint32_t scale(uint32_t rgb, float k) {
+      if (k <= 0.0f) return 0;
+      if (k > 1.0f) k = 1.0f;
+      uint32_t r = (uint32_t)(((rgb >> 16) & 0xFF) * k + 0.5f);
+      uint32_t g = (uint32_t)(((rgb >> 8) & 0xFF) * k + 0.5f);
+      uint32_t b = (uint32_t)((rgb & 0xFF) * k + 0.5f);
+      return (r << 16) | (g << 8) | b;
+    }
+
+    // Smooth 0..1..0 over `period` (starts dark).
+    static float wave(unsigned long t, uint16_t period) {
+      float p = (float)(t % period) / (float)period;
+      return 0.5f - 0.5f * cosf(p * 6.2831853f);
+    }
+
+    static uint32_t xorshift(uint32_t x) {
+      x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+      return x;
+    }
+
+    static void fill_eye(int eye, uint32_t rgb) {
+      for (int i = 0; i < 9; i++) g_frame[eye][i] = rgb;
+    }
+
+    // Render the current pattern at time t (ms since it started) into g_frame.
+    static void render(unsigned long t) {
+      memset(g_frame, 0, sizeof(g_frame));
+      uint16_t period = g_period ? g_period : DEFAULT_PERIOD[g_pattern];
+
+      switch (g_pattern) {
+        case PAT_SOLID:
+          for (int e = 0; e < 2; e++) fill_eye(e, g_rgb[e]);
+          break;
+
+        case PAT_BLINK:                            // on for the first half, off for the second
+          if (t % period < period / 2u)
+            for (int e = 0; e < 2; e++) fill_eye(e, g_rgb[e]);
+          break;
+
+        case PAT_BREATHE: {                        // 10% .. 100%
+          float k = 0.10f + 0.90f * wave(t, period);
+          for (int e = 0; e < 2; e++) fill_eye(e, scale(g_rgb[e], k));
+          break;
+        }
+
+        case PAT_PULSE: {                          // fast rise (12%), slow fade, floor 12%
+          float p = (float)(t % period) / (float)period;
+          float k = p < 0.12f ? p / 0.12f : 1.0f - (p - 0.12f) / 0.88f;
+          k = 0.12f + 0.88f * k * k;
+          for (int e = 0; e < 2; e++) fill_eye(e, scale(g_rgb[e], k));
+          break;
+        }
+
+        case PAT_SPARKLE: {                        // ~40% of pixels lit, random brightness
+          uint32_t x = (uint32_t)(t / SPARKLE_STEP_MS) * 2654435761u + 0x9E3779B9u;
+          for (int e = 0; e < 2; e++)
+            for (int i = 0; i < 9; i++) {
+              x = xorshift(x);
+              if ((x >> 8) % 10 < 4) g_frame[e][i] = scale(g_rgb[e], 0.35f + 0.65f * ((x >> 16) & 0xFF) / 255.0f);
+            }
+          break;
+        }
+
+        case PAT_DOUBLE_BLINK: {                   // off, on, off at the start of each period
+          unsigned long p = t % period;
+          bool off = p < BLINK_MS || (p >= 2 * BLINK_MS && p < 3 * BLINK_MS);
+          if (!off) for (int e = 0; e < 2; e++) fill_eye(e, g_rgb[e]);
+          break;
+        }
+
+        case PAT_GLOW: {                           // faint: 8% .. 60%
+          float k = 0.08f + 0.52f * wave(t, period);
+          for (int e = 0; e < 2; e++) fill_eye(e, scale(g_rgb[e], k));
+          break;
+        }
+
+        case PAT_HALF:                             // middle row (pixels 3,4,5)
+          for (int e = 0; e < 2; e++)
+            for (int i = 3; i <= 5; i++) g_frame[e][i] = g_rgb[e];
+          break;
+
+        case PAT_SWEEP: {                          // positions 0..5 = left cols 0-2, right cols 0-2
+          uint16_t step_ms = period / 10; if (step_ms == 0) step_ms = 1;
+          int s = (int)((t / step_ms) % 10);       // 0..9 -> 0,1,2,3,4,5,4,3,2,1
+          int pos = s <= 5 ? s : 10 - s;
+          int e = pos / 3, col = pos % 3;
+          for (int row = 0; row < 3; row++) g_frame[e][row * 3 + col] = g_rgb[e];
+          break;
+        }
+
+        default: break;
+      }
+    }
+
+    // ---- API ----------------------------------------------------------------------------
+    void eyes_begin() {
+      eyes_hw_begin();
+      memset(g_shown, 0, sizeof(g_shown));
+      g_mood = MOOD_COUNT;
+      eyes_set_mood(MOOD_CALM);
+    }
+
+    void eyes_set(uint32_t left_rgb, uint32_t right_rgb, EyePattern pattern, uint16_t period_ms) {
+      if (pattern >= PAT_COUNT) pattern = PAT_SOLID;
+      g_rgb[0] = left_rgb & 0xFFFFFF;
+      g_rgb[1] = right_rgb & 0xFFFFFF;
+      g_pattern = pattern;
+      g_period = period_ms;
+      g_since = millis();
+      g_mood = MOOD_COUNT;                         // custom until eyes_set_mood says otherwise
+      g_happy_timer = false;
+      g_dirty = true;
+    }
+
+    void eyes_set_mood(EyeMood mood) {
+      if (mood >= MOOD_COUNT) return;
+      if (mood == g_mood && mood != MOOD_HAPPY) return;   // same mood: keep animation running
+      const MoodSpec& m = MOODS[mood];
+      eyes_set(m.rgb, m.rgb, m.pattern, m.period_ms);
+      g_mood = mood;
+      if (mood == MOOD_HAPPY) { g_happy_timer = true; g_happy_until = g_since + HAPPY_MS; }
+    }
+
+    bool eyes_set_mood_name(const char* name) {
+      if (!name) return false;
+      for (int i = 0; i < MOOD_COUNT; i++)
+        if (strcmp(name, MOODS[i].name) == 0) { eyes_set_mood((EyeMood)i); return true; }
+      return false;
+    }
+
+    EyeMood eyes_mood() { return g_mood; }
+
+    const char* eyes_mood_name(EyeMood mood) {
+      return mood < MOOD_COUNT ? MOODS[mood].name : "custom";
+    }
+
+    bool eyes_pattern_from_name(const char* name, EyePattern* out) {
+      if (!name) return false;
+      for (int i = 0; i < PAT_COUNT; i++)
+        if (strcmp(name, PATTERN_NAMES[i]) == 0) { if (out) *out = (EyePattern)i; return true; }
+      return false;
+    }
+
+    void eyes_tick() {
+      unsigned long now = millis();
+      if (g_happy_timer && (long)(now - g_happy_until) >= 0) eyes_set_mood(MOOD_CALM);
+      if (!g_dirty && now - g_last_frame < FRAME_MS) return;
+      g_last_frame = now;
+      g_dirty = false;
+
+      render(now - g_since);
+      if (memcmp(g_frame, g_shown, sizeof(g_frame)) != 0) {   // only push when something changed
+        memcpy(g_shown, g_frame, sizeof(g_frame));
+        eyes_hw_show(g_shown[0], g_shown[1]);
+      }
+    }
+
+    // eyes_hw.cpp — owner: Reshma. The ONLY file that touches the LED Grid modules.
+    // Instances from firmware/robot_eyes/project.yaml: eye_left (port 13), eye_right (port 10).
+    // If the eyes come out swapped on the robot, swap the two ports in project.yaml.
+
+    static const uint8_t BRIGHTNESS = 51;   // module caps at 51 (20%); colours are scaled by it
+
+    static void push(NeoPixelGrid& grid, const uint32_t px[9]) {
+      for (int i = 0; i < 9; i++)
+        grid.setPixel(i, (px[i] >> 16) & 0xFF, (px[i] >> 8) & 0xFF, px[i] & 0xFF);
+      grid.show();
+    }
+
+    void eyes_hw_begin() {
+      eye_left.setBrightness(BRIGHTNESS);  eye_left.clear();  eye_left.show();
+      eye_right.setBrightness(BRIGHTNESS); eye_right.clear(); eye_right.show();
+    }
+
+    void eyes_hw_show(const uint32_t left[9], const uint32_t right[9]) {
+      push(eye_left, left);
+      push(eye_right, right);
+    }
+
+    // ===== mic (owner: Reshma). Copy of firmware/robot/mic.h + mic.cpp + mic_hw.cpp: edit those, then re-paste here =====
+    // mic.* — owner: Reshma. Microphone (I2S MEMS, ports 2+3): sound level + "Charlie" call detection.
+    // Contract: docs/MESSAGES.md (robot.sound).
+    //
+    // How a call is detected (option A, on the board, no laptop):
+    //   a sound that rises clearly above the background noise, lasts like one spoken word
+    //   (0.25 .. 1.2 s, short gaps between syllables allowed) and is followed by quiet.
+    //   Claps/knocks (too short) and sentences/music (too long) are ignored.
+    //   Any short word counts. Later: the laptop (Wiam's speech-to-text) confirms it was "Charlie".
+    //
+    // The mic ignores everything while the robot's own speaker plays and for 1 s after.
+    #include <stdint.h>
+
+    // ---- Main API ---------------------------------------------------------------
+    void mic_begin();            // call once in setup
+    void mic_tick();             // call every loop; non-blocking (works every 20 ms)
+
+    float mic_level();           // current sound level 0..1 (robot.sound "level")
+    bool  mic_loud();            // sound clearly above background right now (robot.sound "loud")
+    bool  mic_talking();         // a sound is in progress (use for "listening" eyes)
+    bool  mic_called();          // true ONCE per detected call, then false until the next one
+    uint16_t mic_last_call_ms(); // length of the last detected call word, for logs
+
+    // ---- Interfaces mic needs from other owners -----------------------------------
+    bool audio_is_playing();                 // Wiam: true while the speaker plays (mic is muted)
+    void comms_send(const char* json_line);  // Wanhui: send one JSON object
+
+    // ---- Hardware layer (mic_hw.cpp) ------------------------------------------------
+    // Only place that touches the Atech microphone API.
+    void    mic_hw_begin();
+    int16_t mic_hw_level();      // RMS sound level, 0..32767
+
+    // mic.cpp — owner: Reshma. Background-noise tracking + "one short word" call detector.
+    #include <stdio.h>
+
+    #ifdef ARDUINO
+    #include <Arduino.h>
+    #else
+    unsigned long millis();   // provided by host test
+    #endif
+
+    // ---- Tunables (tune on the robot with robot_mic/test_mic_live.py) -----------------
+    static const uint16_t STEP_MS            = 20;     // analyse the level 50x per second
+    static const float    START_RATIO        = 3.0f;   // a sound starts above floor x 3 ...
+    static const int      START_MIN_DELTA    = 150;    // ... and at least floor + 150
+    static const float    END_RATIO          = 2.0f;   // it continues while above floor x 2 ...
+    static const int      END_MIN_DELTA      = 80;     // ... and floor + 80
+    static const uint16_t WORD_MIN_MS        = 250;    // shorter = clap / knock
+    static const uint16_t WORD_MAX_MS        = 1200;   // longer  = sentence / music
+    static const uint16_t QUIET_AFTER_MS     = 400;    // quiet needed after the word (also bridges syllable gaps)
+    static const uint16_t COOLDOWN_MS        = 1500;   // min time between two calls
+    static const uint16_t MUTE_AFTER_PLAY_MS = 1000;   // ignore the room this long after our own speaker
+    static const uint16_t FLOOR_TAU_MS       = 2000;   // background noise adapts over ~2 s
+    static const int      FLOOR_MIN          = 30;
+    static const uint16_t STUCK_MS           = 5000;   // a "sound" this long is the new background
+    static const float    LEVEL_FULL         = 4000.0f;// RMS that maps to level 1.0
+    static const uint16_t SOUND_REPORT_MS    = 200;    // robot.sound at 5 Hz
+
+    // ---- State ------------------------------------------------------------------------
+    enum Phase : uint8_t { P_QUIET, P_SOUND, P_AFTER };  // AFTER = word may be over, waiting for quiet
+    static Phase g_phase = P_QUIET;
+    static float g_floor = FLOOR_MIN;
+    static bool  g_floor_init = false;
+    static int   g_level = 0;
+    static unsigned long g_last_step = 0, g_last_report = 0;
+    static unsigned long g_seg_start = 0, g_last_loud = 0;
+    static unsigned long g_muted_until = 0;
+    static unsigned long g_last_call_at = 0;
+    static bool  g_has_called = false;
+    static bool  g_called = false;
+    static uint16_t g_last_call_ms = 0;
+
+    static float maxf(float a, float b) { return a > b ? a : b; }
+
+    static void classify(unsigned long now) {
+      unsigned long dur = g_last_loud - g_seg_start + STEP_MS;
+      if (dur < WORD_MIN_MS || dur > WORD_MAX_MS) return;              // clap or sentence
+      if (g_has_called && now - g_last_call_at < COOLDOWN_MS) return;  // too soon after the last call
+      g_called = true;
+      g_has_called = true;
+      g_last_call_at = now;
+      g_last_call_ms = (uint16_t)dur;
+      char buf[64];
+      snprintf(buf, sizeof buf, "{\"type\":\"robot.heard\",\"kind\":\"call\",\"ms\":%u}", (unsigned)dur);
+      comms_send(buf);
+    }
+
+    // ---- API ----------------------------------------------------------------------------
+    void mic_begin() {
+      mic_hw_begin();
+      g_phase = P_QUIET;
+      g_floor_init = false;
+      g_called = g_has_called = false;
+      g_muted_until = 0;
+      g_last_step = g_last_report = millis();
+    }
+
+    void mic_tick() {
+      unsigned long now = millis();
+      if (now - g_last_step < STEP_MS) return;
+      g_last_step = now;
+
+      int lvl = mic_hw_level();
+      if (lvl < 0) lvl = 0;
+      g_level = lvl;
+      if (!g_floor_init) { g_floor = maxf((float)lvl, (float)FLOOR_MIN); g_floor_init = true; }
+
+      float start_th = maxf(g_floor * START_RATIO, g_floor + START_MIN_DELTA);
+      float end_th   = maxf(g_floor * END_RATIO,   g_floor + END_MIN_DELTA);
+
+      bool playing = audio_is_playing();
+      if (playing) g_muted_until = now + MUTE_AFTER_PLAY_MS;
+      bool muted = playing || (long)(now - g_muted_until) < 0;
+
+      if (muted) {
+        g_phase = P_QUIET;                                  // drop any half-heard sound
+      } else {
+        switch (g_phase) {
+          case P_QUIET:
+            if (lvl >= start_th) { g_phase = P_SOUND; g_seg_start = g_last_loud = now; }
+            else {                                          // learn the background noise
+              g_floor += (lvl - g_floor) * ((float)STEP_MS / FLOOR_TAU_MS);
+              if (g_floor < FLOOR_MIN) g_floor = FLOOR_MIN;
+            }
+            break;
+          case P_SOUND:
+            if (lvl >= end_th) g_last_loud = now;
+            else g_phase = P_AFTER;
+            if (now - g_seg_start > STUCK_MS) {              // fan/music: accept it as background
+              g_floor = (float)lvl; g_phase = P_QUIET;
+            }
+            break;
+          case P_AFTER:
+            if (lvl >= end_th) { g_phase = P_SOUND; g_last_loud = now; }        // next syllable / word
+            else if (now - g_last_loud >= QUIET_AFTER_MS) { classify(now); g_phase = P_QUIET; }
+            break;
+        }
+      }
+
+      if (now - g_last_report >= SOUND_REPORT_MS) {
+        g_last_report = now;
+        char buf[64];
+        snprintf(buf, sizeof buf, "{\"type\":\"robot.sound\",\"level\":%.3f,\"loud\":%s}",
+                 (double)mic_level(), mic_loud() ? "true" : "false");
+        comms_send(buf);
+      }
+    }
+
+    float mic_level() {
+      float v = g_level / LEVEL_FULL;
+      return v > 1.0f ? 1.0f : v;
+    }
+
+    bool mic_loud()    { return g_phase == P_SOUND; }
+    bool mic_talking() { return g_phase != P_QUIET; }
+
+    bool mic_called() {
+      if (!g_called) return false;
+      g_called = false;
+      return true;
+    }
+
+    uint16_t mic_last_call_ms() { return g_last_call_ms; }
+
+    // mic_hw.cpp — owner: Reshma. The ONLY file that touches the microphone module.
+    // Instance from firmware/robot_mic/project.yaml: microphone (ports 2+3).
+    // The module's own begin() already ran in the generated setup() and started its
+    // background capture task, so the level below is cached and returns instantly.
+
+    void mic_hw_begin() {}
+
+    int16_t mic_hw_level() {
+      return microphone.getSoundLevel();   // RMS 0..32767
+    }
+
+    // ===== bench glue (this project only) =====
+    // No speaker here yet: Wiam's audio.* will provide the real audio_is_playing().
+    bool audio_is_playing() { return false; }
+
+    // Stand-in for Wanhui's comms_send(): wraps our flat JSON (type robot.sound -> key robot_sound)
+    // into an Atech event line so `atech monitor` and the Python SDK can read it.
+    void comms_send(const char* json) {
+      char key[32] = "robot";
+      const char* t = strstr(json, "\"type\":\"");
+      if (t) {
+        t += 8;
+        int i = 0;
+        while (t[i] && t[i] != '"' && i < 31) { key[i] = (t[i] == '.') ? '_' : t[i]; i++; }
+        key[i] = 0;
+      }
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"sensor\",\"key\":\"%s\",\"value\":%s}}\n", key, json);
+    }
+
+  setup: |
+    eyes_begin();
+    mic_begin();
+  loop: |
+    // "Charlie" (any short word) -> happy eyes. While a sound is going on -> listening (white).
+    // Later: also robot.come (Sara) + happy bark (Wiam), and the laptop confirms the word.
+    // Laptop actions: robot_eyes <mood> (to check the eyes by hand)
+    if (atech_action.length()) {
+      if (atech_action == "robot_eyes") {
+        if (eyes_set_mood_name(atech_value.c_str())) atechDone();
+      }
+    }
+    mic_tick();
+    if (mic_called()) {
+      eyes_set_mood(MOOD_HAPPY);
+    } else if (mic_talking()) {
+      if (eyes_mood() == MOOD_CALM) eyes_set_mood(MOOD_LISTENING);
+    } else if (eyes_mood() == MOOD_LISTENING) {
+      eyes_set_mood(MOOD_CALM);
+    }
+    eyes_tick();
