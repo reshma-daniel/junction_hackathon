@@ -25,8 +25,8 @@ NAME = "charlie"
 
 
 class WakeListener:
-    def __init__(self, on_wake, is_muted=lambda: False, device=None, min_conf: float = 0.6,
-                 cooldown_s: float = 2.0, model_path: str | None = None):
+    def __init__(self, on_wake, is_muted=lambda: False, device=None, min_conf: float = 0.45,
+                 cooldown_s: float = 2.0, model_path: str | None = None, use_partial: bool = True):
         from vosk import KaldiRecognizer, Model, SetLogLevel
         SetLogLevel(-1)
         model = Model(model_path) if model_path else Model(lang="en-us")
@@ -37,6 +37,10 @@ class WakeListener:
         self.device = int(device) if device and str(device).isdigit() else device
         self.min_conf = min_conf
         self.cooldown_s = cooldown_s
+        # Real voices at 1-2 m: Vosk often shows "charlie" while the word is spoken (partial result) but gives
+        # the final result late and with low confidence. Grammar mode only allows our name or [unk], so a
+        # partial "charlie" is good enough: react at once (~0.5 s), then reset so one word fires once.
+        self.use_partial = use_partial
         self._last_fire = 0.0
         self._was_muted = False
         self._q: queue.Queue[bytes] = queue.Queue()
@@ -51,6 +55,14 @@ class WakeListener:
             self._was_muted = False
         if self.rec.AcceptWaveform(pcm):
             self._check(json.loads(self.rec.Result()))
+        elif self.use_partial:
+            heard = json.loads(self.rec.PartialResult()).get("partial", "").split()
+            if any(w in ALIASES for w in heard):
+                self.rec.Reset()
+                now = time.monotonic()
+                if now - self._last_fire >= self.cooldown_s:
+                    self._last_fire = now
+                    self.on_wake(NAME, 0.5)
 
     def _check(self, result: dict) -> None:
         """Fire when an alias appears as consecutive words, each heard confidently enough."""
@@ -87,7 +99,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mic", help="input device number or name")
     ap.add_argument("--list-mics", action="store_true")
-    ap.add_argument("--min-conf", type=float, default=0.6)
+    ap.add_argument("--min-conf", type=float, default=0.45)
     args = ap.parse_args()
     if args.list_mics:
         import sounddevice as sd

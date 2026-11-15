@@ -8,6 +8,7 @@
 
 Boards: robot = firmware/robot_main (eyes, mic, speaker, dock distance sensor on port 7)
         wearable = firmware/wearable (IMU). `atech ports` lists the ports.
+--listen: hear "Charlie" on the laptop mic too (offline).
 Keyboard stand-ins while rehearsing (type a key + Enter):  c = "Charlie"   p = pill taken   m = user moved
 Story logic and the table of what happens when: services/brain/story.py
 """
@@ -206,6 +207,9 @@ def main() -> None:
     ap.add_argument("--robot-port", help="robot USB port, e.g. COM8 (default: first board found)")
     ap.add_argument("--wearable-port", help="wearable USB port; leave out to run without the wearable")
     ap.add_argument("--volume", type=float, default=d.get("volume", 0.1))
+    ap.add_argument("--listen", action="store_true",
+                    help='also hear "Charlie" on the laptop microphone (offline, Vosk); muted while Charlie speaks')
+    ap.add_argument("--mic", help="laptop microphone device name/number for --listen (default: system)")
     ap.add_argument("--panel", action="store_true",
                     help="set up and run the story from Wiam's demo panel in the browser (Story mode)")
     ap.add_argument("--panel-port", type=int, default=8766,
@@ -243,6 +247,7 @@ def main() -> None:
             charlie._robot(action, str(default if key == "near_mm" else d["dock"].get(key, default)))
         print("Firmware: robot=firmware/robot_main; wearable=firmware/wearable; standalone bridge is not needed.", flush=True)
         drive = {"on": not args.no_drive, "volume": args.volume}
+        mics = {"mic_robot": True, "mic_laptop": bool(args.listen)}   # which mic may start a "Charlie" call
         dock_near = {"mm": d.get("dock_near_mm", 10)}
         real_walk, real_stop, real_pill_drive = charlie.walk, charlie.walk_stop, charlie.pill_drive
 
@@ -257,7 +262,8 @@ def main() -> None:
         charlie.pill_drive = pill_drive
 
         def runner_get() -> dict:
-            return {"speed_slow": charlie.slow, "speed_fast": charlie.fast, "drive": drive["on"],
+            return {"speed_slow": charlie.slow, "speed_fast": charlie.fast, "drive": drive["on"], **mics,
+                    "mic_laptop_available": bool(args.listen),
                     "volume": drive["volume"], "navigation": navigation.snapshot()}
 
         def runner_set(new: dict) -> list:
@@ -279,6 +285,12 @@ def main() -> None:
                 if not drive["on"]:
                     charlie.pill_stop()
                     real_stop()
+            for key, name in (("mic_robot", "robot mic"), ("mic_laptop", "laptop mic")):
+                if key in new and bool(new[key]) != mics[key]:
+                    if key == "mic_laptop" and not args.listen:
+                        continue  # the laptop mic only exists when started with --listen
+                    mics[key] = bool(new[key])
+                    changed.append(f"{name} {'on' if mics[key] else 'off'}")
             if "dock_near_mm" in new:
                 try:
                     near = int(new["dock_near_mm"])
@@ -309,6 +321,7 @@ def main() -> None:
                       motion_energy=d.get("motion_energy_moving", 0.05), dock_near_mm=d.get("dock_near_mm", 10),
                       log=story_log)
         inputs = StoryInputs(story, navigation, telemetry=telemetry.record)
+        inputs.hear_calls = lambda: mics["mic_robot"]
         if args.panel:
             from story_panel import StoryPanel, serve
             panel = StoryPanel(story, charlie, runner_get, runner_set, day_s=d.get("panel_day_s", 180),
@@ -318,6 +331,18 @@ def main() -> None:
             threading.Thread(target=fn, args=a, daemon=True).start()
         if wearable:
             threading.Thread(target=wearable_events, args=(wearable, story, inputs), daemon=True).start()
+        if args.listen:  # Wiam: the laptop mic hears the word "Charlie" (the robot mic only hears loudness)
+            sys.path.insert(0, str(REPO / "services" / "voice"))
+            from wake import WakeListener
+
+            def heard(word, confidence):
+                if not mics["mic_laptop"]:
+                    return  # switched off in the panel
+                story_log(f'Laptop mic heard "{word}" ({confidence:.2f})')
+                story.on_called()
+            wake = WakeListener(heard, is_muted=charlie.voice.mic_muted, device=args.mic)
+            threading.Thread(target=_keep_listening, args=("laptop mic", story, wake.run), daemon=True).start()
+            print('Laptop mic: listening for "Charlie".', flush=True)
         if args.panel:
             print(f"Panel: open http://localhost:{args.panel_port} and press 'Start the story' "
                   "(Ctrl+C here to stop).", flush=True)

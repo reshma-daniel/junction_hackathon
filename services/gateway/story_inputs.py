@@ -11,6 +11,7 @@ class StoryInputs:
         self.story, self.walking = story, walking
         self.telemetry = telemetry
         self._last_moving = None
+        self.hear_calls = lambda: True   # run_story/panel: robot mic on or off for "Charlie" calls
 
     def wearable(self, event):
         if event.key != "wearable_motion":
@@ -43,7 +44,10 @@ class StoryInputs:
             if isinstance(event.value, int) and not isinstance(event.value, bool):
                 self.story.last_dock_mm = event.value
         elif event.key == "robot_heard":
-            self.story.on_called()
+            if self.hear_calls():
+                self.story.on_called()
+            else:
+                self.story.log("Robot mic heard a call: ignored (robot mic switched off)")
         elif event.key == "robot_behavior":
             value = event.value if isinstance(event.value, dict) else {}
             self.story.robot_behavior = value.get("state") or self.story.robot_behavior

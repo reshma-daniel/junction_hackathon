@@ -132,6 +132,8 @@
         <div class="setting day-only"><label for="wake_at">Wake-up call</label><input id="wake_at" type="time"></div>
         <div class="setting day-only"><label for="sleep_at">Bedtime</label><input id="sleep_at" type="time"></div>
         <div class="setting story-only"><label for="st_start_at">Clock starts at</label><input id="st_start_at" type="time"></div>
+        <div class="setting story-only"><label for="st_mic_robot">Hear &ldquo;Charlie&rdquo; on the robot mic</label><input id="st_mic_robot" type="checkbox"></div>
+        <div class="setting story-only"><label for="st_mic_laptop">Hear &ldquo;Charlie&rdquo; on the laptop mic</label><input id="st_mic_laptop" type="checkbox"></div>
         <div class="setting story-only"><label for="st_volume">Voice volume</label><input id="st_volume" type="number" min="0" max="1" step="0.05"><span class="unit">0–1</span></div>
       </div>
     </section>
@@ -209,6 +211,7 @@
     if (storyMode) {
       for (const k of ST) if ($("st_" + k).value !== "") out[k] = +$("st_" + k).value;
       out.drive = $("st_drive").checked;
+      out.mic_robot = $("st_mic_robot").checked; out.mic_laptop = $("st_mic_laptop").checked;
       if ($("st_start_at").value) out.start_at = $("st_start_at").value;
       return out;
     }
@@ -224,7 +227,7 @@
     loaded = false; refresh();
   }
   ["day_s", "wake_at", "sleep_at", "pill_at", "still_m", "reask_m", "walk_m"].forEach(id => $(id).addEventListener("change", apply));
-  [...ST, "drive", "start_at"].forEach(k => $("st_" + k).addEventListener("change", apply));
+  [...ST, "drive", "start_at", "mic_robot", "mic_laptop"].forEach(k => $("st_" + k).addEventListener("change", apply));
 
   const send = (e) => fetch("/event/" + e, { method: "POST" }).then(refresh);
   document.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => send(storyMode && b.dataset.eStory ? b.dataset.eStory : b.dataset.e));
@@ -306,7 +309,10 @@
       if (!loaded && storyMode) {
         const st = s.story_settings;
         for (const k of ST) $("st_" + k).value = st[k];
-        $("st_drive").checked = !!st.drive; $("st_start_at").value = st.start_at; $("day_s").value = String(st.day_s);
+        $("st_drive").checked = !!st.drive;
+        $("st_mic_robot").checked = st.mic_robot !== false; $("st_mic_laptop").checked = !!st.mic_laptop;
+        $("st_mic_laptop").disabled = !st.mic_laptop_available;
+        $("st_mic_laptop").title = st.mic_laptop_available ? "" : "start run_story.py with --listen"; $("st_start_at").value = st.start_at; $("day_s").value = String(st.day_s);
         $("speedx").textContent = st.day_s >= DAY ? "" : "(1 hour = " + +(st.day_s / 24).toFixed(1) + " s)";
         loaded = true;
       }
