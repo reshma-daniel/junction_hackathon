@@ -64,22 +64,41 @@ def load_defaults() -> dict:
     return {**cfg.get(cfg.get("profile", "demo"), {}), **cfg.get("story", {})}
 
 
+def _keep_listening(name: str, story: Story, listen) -> None:
+    """Run a listener forever: an error (unplugged cable, odd message) is logged and listening starts again."""
+    while True:
+        try:
+            listen()
+        except Exception as e:
+            story.log(f"! {name} listener: {e} (trying again)")
+            time.sleep(1.0)
+
+
 def robot_events(board, story: Story) -> None:
-    for ev in board.events(keys=["robot_heard", "distance_sensor_min_distance"]):
-        if ev.key == "robot_heard":
-            story.on_called()
-        else:
-            try:
-                story.on_distance(int(ev.value))
-            except (TypeError, ValueError):
-                pass
+    def listen():
+        for ev in board.events(keys=["robot_heard", "distance_sensor_min_distance", "robot_behavior"]):
+            if ev.key == "robot_heard":
+                story.on_called()
+            elif ev.key == "robot_behavior":
+                v = ev.value if isinstance(ev.value, dict) else {}
+                story.robot_behavior = v.get("state") or story.robot_behavior   # robot's own eyes (panel)
+                if v.get("state") == "wake" and story.phase not in ("new", "starting"):
+                    story.log("!!! Charlie restarted (power dip or USB?): the story goes on")
+            else:
+                try:
+                    story.on_distance(int(ev.value))
+                except (TypeError, ValueError):
+                    pass
+    _keep_listening("robot", story, listen)
 
 
 def wearable_events(board, story: Story) -> None:
-    for ev in board.events(keys=["wearable_motion"]):
-        v = ev.value if isinstance(ev.value, dict) else {}
-        if "energy" in v:
-            story.on_motion(float(v["energy"]))
+    def listen():
+        for ev in board.events(keys=["wearable_motion"]):
+            v = ev.value if isinstance(ev.value, dict) else {}
+            if "energy" in v:
+                story.on_motion(float(v["energy"]))
+    _keep_listening("wearable", story, listen)
 
 
 def keyboard(story: Story) -> None:
@@ -98,12 +117,20 @@ def main() -> None:
     ap.add_argument("--repeat", type=float, default=d.get("pill_repeat_s", 5), help="seconds between pill requests")
     ap.add_argument("--max-reasks", type=int, default=d.get("max_reasks", 3))
     ap.add_argument("--walk-s", type=float, default=d.get("walk_s", 10), help="how long the robot drives after 'Follow me'")
+    ap.add_argument("--gap", type=float, default=d.get("topic_gap_s", 8),
+                    help="break in seconds between a pill episode and a walk ask (and the other way round)")
+    ap.add_argument("--follow", type=float, default=d.get("follow_window_s", 10),
+                    help="walk time: seconds after 'Follow me' for the user to move; no movement at all -> sad")
     ap.add_argument("--slow", type=int, default=d.get("speed_slow", 60), help="walk speed while the user is still (0-255)")
     ap.add_argument("--fast", type=int, default=d.get("speed_fast", 220), help="walk speed while the user moves (0-255)")
     ap.add_argument("--no-drive", action="store_true", help="never move the wheels (speech and eyes only)")
     ap.add_argument("--robot-port", help="robot USB port, e.g. COM8 (default: first board found)")
     ap.add_argument("--wearable-port", help="wearable USB port; leave out to run without the wearable")
-    ap.add_argument("--volume", type=float, default=0.4)
+    ap.add_argument("--volume", type=float, default=d.get("volume", 0.4))
+    ap.add_argument("--panel", action="store_true",
+                    help="set up and run the story from Wiam's demo panel in the browser (Story mode)")
+    ap.add_argument("--panel-port", type=int, default=8766,
+                    help="panel web page port (default 8766; Wiam's own day demo uses 8765)")
     args = ap.parse_args()
 
     from atech import Board
@@ -112,23 +139,71 @@ def main() -> None:
     if wearable is None:
         print("No wearable: the user counts as idle (use 'm' + Enter to fake movement).", flush=True)
     try:
-        charlie = Charlie(robot, volume=args.volume) if args.no_drive else \
-            WalkingCharlie(robot, args.volume, args.slow, args.fast)
-        if args.no_drive:
-            charlie.walk = lambda fast=False: None
-            charlie.walk_stop = lambda: None
+        charlie = WalkingCharlie(robot, args.volume, args.slow, args.fast)
+        drive = {"on": not args.no_drive, "volume": args.volume}
+        real_walk, real_stop = charlie.walk, charlie.walk_stop
+
+        def walk(fast: bool = False) -> None:            # wheels can be switched off (--no-drive / panel)
+            if drive["on"]:
+                real_walk(fast)
+        charlie.walk = walk
+
+        def runner_get() -> dict:
+            return {"speed_slow": charlie.slow, "speed_fast": charlie.fast, "drive": drive["on"],
+                    "volume": drive["volume"]}
+
+        def runner_set(new: dict) -> list:
+            changed = []
+            for key, attr in (("speed_slow", "slow"), ("speed_fast", "fast")):
+                if key in new:
+                    try:
+                        v = max(0, min(255, int(float(new[key]))))
+                    except (TypeError, ValueError):
+                        continue
+                    if v != getattr(charlie, attr):
+                        setattr(charlie, attr, v)
+                        changed.append(f"{key}={v}")
+            if "drive" in new and bool(new["drive"]) != drive["on"]:
+                drive["on"] = bool(new["drive"])
+                changed.append("wheels " + ("on" if drive["on"] else "off"))
+                if not drive["on"]:
+                    real_stop()
+            if "volume" in new:
+                try:
+                    v = max(0.0, min(1.0, float(new["volume"])))
+                    if v != drive["volume"]:
+                        charlie.voice.link.set_volume(v)
+                        drive["volume"] = v
+                        changed.append(f"volume={v:g}")
+                except (TypeError, ValueError):
+                    pass
+            return changed
+
         story = Story(charlie, x=args.x, y=args.y, repeat_s=args.repeat, max_reasks=args.max_reasks, walk_s=args.walk_s,
+                      gap_s=args.gap, follow_window_s=args.follow,
                       motion_energy=d.get("motion_energy_moving", 0.05), dock_near_mm=d.get("dock_near_mm", 40),
                       log=lambda m: print(f"{time.strftime('%H:%M:%S')}  {m}", flush=True))
+        if args.panel:
+            from story_panel import StoryPanel, serve
+            panel = StoryPanel(story, charlie, runner_get, runner_set, day_s=d.get("panel_day_s", 180),
+                               start_at=d.get("panel_start_at", "08:00"))
+            threading.Thread(target=serve, args=(panel, args.panel_port), daemon=True).start()
         for fn, a in ((story.worker, ()), (robot_events, (robot, story)), (keyboard, (story,))):
             threading.Thread(target=fn, args=a, daemon=True).start()
         if wearable:
             threading.Thread(target=wearable_events, args=(wearable, story), daemon=True).start()
-        story.begin()
-        print(f'Story running: x={args.x:g} s, y={args.y:g} s. Say "Charlie" (Ctrl+C to stop).', flush=True)
+        if args.panel:
+            print(f"Panel: open http://localhost:{args.panel_port} and press 'Start the story' "
+                  "(Ctrl+C here to stop).", flush=True)
+        else:
+            story.begin()
+            print(f'Story running: x={args.x:g} s, y={args.y:g} s. Say "Charlie" (Ctrl+C to stop).', flush=True)
         while True:
             time.sleep(0.2)
-            story.tick()
+            try:
+                story.tick()
+            except Exception as e:                        # never let one bad moment end the story
+                story.log(f"! story step failed: {e} (going on)")
     except KeyboardInterrupt:
         print("\nbye")
     finally:

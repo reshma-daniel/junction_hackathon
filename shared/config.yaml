@@ -48,6 +48,8 @@ story:
   pill_repeat_s: 5          # asks again this often while the pill is not taken
   max_reasks: 3             # then a gentle back-off
   walk_s: 10                # robot drives this long after the 'Follow me' line
+  topic_gap_s: 8            # break between the pill and a walk ask (both ways): never asked back to back
+  follow_window_s: 10       # walk time after 'Follow me': no movement at all in it -> sad eyes + sad line
   speed_slow: 60            # 0..255 (before the motors' minimum PWM): user sitting
   speed_fast: 220           # user moving
   dock_near_mm: 40          # dock sensor (port 7): closer than this = pill is on the sensor. Calibrate!

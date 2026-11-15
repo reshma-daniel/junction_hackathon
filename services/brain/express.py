@@ -48,13 +48,37 @@ ROBOT_DRIVES_EYES = {"wake"}   # the robot shows its own wake-up animation; we o
 IGNORE_AFTER_S = 1.5           # after Charlie spoke, ignore the mic a bit longer (no self-trigger)
 
 
+STARTUP_WAIT_S = 10.0          # connecting restarts the robot; its start-up takes ~3 s (distance sensors)
+
+
+def wait_until_ready(board, timeout_s: float = STARTUP_WAIT_S) -> None:
+    """Ping the robot until it answers. Opening the USB port restarts the board, and for ~3 s it can't answer."""
+    deadline = time.monotonic() + timeout_s
+    said = False
+    while True:
+        try:
+            board.call("robot_ping", "", timeout=1.0)
+            if said:
+                print("Charlie is ready.", flush=True)
+            return
+        except Exception:
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"Charlie did not answer within {timeout_s:g} s: is robot_main flashed, "
+                                   "and is no other program using its USB port?")
+            if not said:
+                print("Waiting for Charlie to start up...", flush=True)
+                said = True
+
+
 class Charlie:
     def __init__(self, board, volume: float = 0.4):
         self.board = board
         self.lock = threading.Lock()          # eyes commands and audio chunks take turns on the cable
+        wait_until_ready(board)               # else the first speaker command times out during start-up
         self.voice = Voice(AtechUsbLink(board=board, lock=self.lock, volume=volume), emit=lambda m: None)
         self._busy = threading.Event()
         self._quiet_since = 0.0
+        self.now_playing: dict | None = None  # {"emotion", "reaction", "mood"} while a phrase plays (panel)
 
     def _robot(self, action: str, value: str) -> None:
         with self.lock:
@@ -71,6 +95,7 @@ class Charlie:
         plan = self.voice.reactions.plan(reaction, **args)
         mood = mood or (None if emotion in ROBOT_DRIVES_EYES else (plan.get("eyes") or {}).get("color"))
         self._busy.set()
+        self.now_playing = {"emotion": emotion, "reaction": reaction, "mood": mood or "sleepy"}
         try:
             if mood:
                 self._robot("robot_express", mood)          # eyes change now ...
@@ -81,6 +106,7 @@ class Charlie:
             if mood:
                 self._robot("robot_express", "done")        # back to the calm/search cycle
             self._quiet_since = time.monotonic()
+            self.now_playing = None
             self._busy.clear()
 
     def express_async(self, emotion: str) -> None:

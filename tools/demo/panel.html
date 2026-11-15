@@ -78,19 +78,24 @@
   #cover div { text-align:center; max-width:440px; } #cover p { color:var(--muted); }
   #cover button { background:var(--accent); color:#111; border-color:var(--accent); font-weight:700; font-size:18px; padding:14px 28px; text-align:center; }
 
+  /* Story mode (run_story.py --panel): same page, story settings instead of clock times */
+  .story-only { display:none; } body.story .story-only { display:block; } body.story .day-only { display:none; }
+  body.story .setting.story-only { display:flex; } body.story .legend span.story-only { display:inline; }
+  .eq { color:var(--muted); font-size:12px; min-width:92px; text-align:right; }
+  input[type=checkbox] { width:20px; height:20px; accent-color:var(--ok); }
   @media (max-width:820px) { .three { grid-template-columns:1fr; } .sit .why { min-height:0; } }
   @media (max-width:640px) { .top { grid-template-columns:1fr; text-align:center; } .eyesrow, .speed, .legend { justify-content:center; } }
 </style>
 </head>
 <body>
 <div id="cover"><div>
-  <h2 style="font-size:22px;color:var(--text);text-transform:none;letter-spacing:0">A day with Charlie</h2>
-  <p>A whole day on a fast clock. Charlie's voice plays in this tab. Click to start: the day begins just before the wake-up call.</p>
-  <button id="start">Start the day</button>
+  <h2 style="font-size:22px;color:var(--text);text-transform:none;letter-spacing:0" data-story="Charlie&rsquo;s story">A day with Charlie</h2>
+  <p data-story="Charlie wakes up, waits for &ldquo;Charlie!&rdquo;, then watches the pill and your movement. Voice, eyes and wheels on the robot.">A whole day on a fast clock. Charlie's voice plays in this tab. Click to start: the day begins just before the wake-up call.</p>
+  <button id="start" data-story="Start the story">Start the day</button>
 </div></div>
 <main>
-  <h1>Charlie demo panel</h1>
-  <p class="sub">Every setting is a real-life time; only the clock runs faster. "Take the pill" and "Start walking" stand in for the head sensor and the wearable.</p>
+  <h1 data-story="Charlie&rsquo;s story">Charlie demo panel</h1>
+  <p class="sub" data-story="The story runs on the robot with its timings in seconds; the clock shows Charlie&rsquo;s day at the chosen speed. The buttons stand in for the real sensors.">Every setting is a real-life time; only the clock runs faster. "Take the pill" and "Start walking" stand in for the head sensor and the wearable.</p>
 
   <section class="card top">
     <svg id="dial" viewBox="0 0 240 240" role="img" aria-label="24-hour clock"></svg>
@@ -108,6 +113,7 @@
       <div class="legend">
         <span><i style="background:var(--wake)"></i>wake-up</span><span><i style="background:var(--ok)"></i>pill taken</span>
         <span><i style="background:var(--due)"></i>pill missed</span><span><i style="background:#9fd0ff"></i>walk started</span><span><i style="background:var(--walk)"></i>walk done</span><span><i style="background:#7fb4e6"></i>short walk</span>
+        <span class="story-only"><i style="background:var(--accent)"></i>&ldquo;Charlie!&rdquo;</span><span class="story-only"><i style="background:var(--sleep)"></i>walk: no movement</span>
         <span><i style="background:var(--muted)"></i>reminder</span><span><i style="background:var(--sleep)"></i>bedtime</span>
         <span><i style="background:var(--night);border:1px solid #3a4170"></i>night</span><span><i style="background:var(--dayring)"></i>day</span>
       </div>
@@ -117,46 +123,60 @@
   <h2>The day</h2>
   <div class="three">
     <section class="card sit" id="wake">
-      <h3>0 · Wake-up and bedtime</h3>
-      <p class="why">Charlie sleeps at night. At the wake-up time it yawns and says good morning.</p>
+      <h3 data-story="0 · Charlie wakes up">0 · Wake-up and bedtime</h3>
+      <p class="why" data-story="It yawns and says good morning, then waits for someone to call &ldquo;Charlie!&rdquo;. The timers start after its greeting.">Charlie sleeps at night. At the wake-up time it yawns and says good morning.</p>
       <div class="big" data-k="text">–</div><div class="detail" data-k="detail"></div>
       <div class="bar"><i></i></div>
-      <button class="act" data-e="wake_up">Wake up now<kbd>W</kbd></button>
+      <button class="act" data-e="wake_up" data-e-story="charlie" data-story="&ldquo;Charlie!&rdquo;<kbd>C</kbd>">Wake up now<kbd>W</kbd></button>
       <div class="settings">
-        <div class="setting"><label for="wake_at">Wake-up call</label><input id="wake_at" type="time"></div>
-        <div class="setting"><label for="sleep_at">Bedtime</label><input id="sleep_at" type="time"></div>
+        <div class="setting day-only"><label for="wake_at">Wake-up call</label><input id="wake_at" type="time"></div>
+        <div class="setting day-only"><label for="sleep_at">Bedtime</label><input id="sleep_at" type="time"></div>
+        <div class="setting story-only"><label for="st_start_at">Clock starts at</label><input id="st_start_at" type="time"></div>
+        <div class="setting story-only"><label for="st_volume">Voice volume</label><input id="st_volume" type="number" min="0" max="1" step="0.05"><span class="unit">0–1</span></div>
       </div>
     </section>
     <section class="card sit" id="pill">
       <h3>1 · Pill intake</h3>
-      <p class="why">At pill time, if the sensor on Charlie's head has not seen a hand today → reminder</p>
+      <p class="why" data-story="Some seconds after the greeting Charlie asks for the pill, again and again; taken → praise, never taken → sad. Never together with a walk.">At pill time, if the sensor on Charlie's head has not seen a hand today → reminder</p>
       <div class="big" data-k="text">–</div><div class="detail" data-k="detail"></div>
       <div class="bar"><i></i></div>
       <button class="act" data-e="pill_taken">Take the pill<kbd>T</kbd></button>
       <div class="settings">
-        <div class="setting"><label for="pill_at">Pill every day at</label><input id="pill_at" type="time"></div>
-        <div class="setting"><label for="reask_m">Remind again after</label><input id="reask_m" type="number" min="1" step="1"><span class="unit">min</span></div>
+        <div class="setting day-only"><label for="pill_at">Pill every day at</label><input id="pill_at" type="time"></div>
+        <div class="setting day-only"><label for="reask_m">Remind again after</label><input id="reask_m" type="number" min="1" step="1"><span class="unit">min</span></div>
+        <div class="setting story-only"><label for="st_x">Pill ask after &ldquo;Charlie!&rdquo;</label><input id="st_x" type="number" min="0" step="1"><span class="unit">s</span><span class="eq" data-eq="st_x"></span></div>
+        <div class="setting story-only"><label for="st_repeat_s">Ask again every</label><input id="st_repeat_s" type="number" min="1" step="1"><span class="unit">s</span><span class="eq" data-eq="st_repeat_s"></span></div>
+        <div class="setting story-only"><label for="st_max_reasks">Asks before giving up</label><input id="st_max_reasks" type="number" min="1" step="1"><span class="unit">×</span></div>
+        <div class="setting story-only"><label for="st_dock_near_mm">Pill on the dock if closer than</label><input id="st_dock_near_mm" type="number" min="1" step="1"><span class="unit">mm</span></div>
       </div>
     </section>
     <section class="card sit" id="move">
       <h3>2 · Movement check</h3>
-      <p class="why">No movement on the wearable for this long → walk reminder. A walk counts after the walk goal.</p>
+      <p class="why" data-story="Sitting still too long → &ldquo;Follow me!&rdquo; and the robot drives. Moved during the walk time → praise, never moved → sad.">No movement on the wearable for this long → walk reminder. A walk counts after the walk goal.</p>
       <div class="big" data-k="text">–</div><div class="detail" data-k="detail"></div>
       <div class="bar"><i></i></div>
       <button class="act" id="walkbtn" data-e="moved">Start walking<kbd>M</kbd></button>
       <div class="settings">
-        <div class="setting"><label for="still_m">Remind to move after</label><input id="still_m" type="number" min="1" step="1"><span class="unit">min</span></div>
-        <div class="setting"><label for="walk_m">Walk goal</label><input id="walk_m" type="number" min="1" step="1"><span class="unit">min</span></div>
+        <div class="setting day-only"><label for="still_m">Remind to move after</label><input id="still_m" type="number" min="1" step="1"><span class="unit">min</span></div>
+        <div class="setting day-only"><label for="walk_m">Walk goal</label><input id="walk_m" type="number" min="1" step="1"><span class="unit">min</span></div>
+        <div class="setting story-only"><label for="st_y">&ldquo;Follow me&rdquo; after sitting still</label><input id="st_y" type="number" min="1" step="1"><span class="unit">s</span><span class="eq" data-eq="st_y"></span></div>
+        <div class="setting story-only"><label for="st_walk_s">Robot drives for</label><input id="st_walk_s" type="number" min="1" step="1"><span class="unit">s</span><span class="eq" data-eq="st_walk_s"></span></div>
+        <div class="setting story-only"><label for="st_follow_window_s">Walk time to move</label><input id="st_follow_window_s" type="number" min="1" step="1"><span class="unit">s</span><span class="eq" data-eq="st_follow_window_s"></span></div>
+        <div class="setting story-only"><label for="st_gap_s">Break between pill and walk</label><input id="st_gap_s" type="number" min="0" step="1"><span class="unit">s</span><span class="eq" data-eq="st_gap_s"></span></div>
+        <div class="setting story-only"><label for="st_motion_energy">Moving if the wearable reads at least</label><input id="st_motion_energy" type="number" min="0" step="0.01"><span class="unit">g</span></div>
+        <div class="setting story-only"><label for="st_speed_slow">Speed: user sitting / moving</label><input id="st_speed_slow" type="number" min="0" max="255" step="5"><input id="st_speed_fast" type="number" min="0" max="255" step="5"></div>
+        <div class="setting story-only"><label for="st_drive">Wheels on</label><input id="st_drive" type="checkbox"></div>
       </div>
     </section>
   </div>
 
   <h2>More</h2>
   <div class="grid">
-    <button data-e="charlie"><kbd>C</kbd><b>"Charlie!"</b><span>Bark + live conversation</span></button>
-    <button data-e="skip"><kbd>S</kbd><b>Next step now</b><span>Skip the night, or the wait for the next reminder</span></button>
-    <button data-e="pill_due"><kbd>P</kbd><b>Pill time now</b><span>Move the clock to the pill time</span></button>
-    <button data-e="reset"><kbd>R</kbd><b>New day</b><span>Clock back to just before the wake-up</span></button>
+    <button data-e="charlie" data-story="<kbd>C</kbd><b>&ldquo;Charlie!&rdquo;</b><span>Happy eyes, bark and greeting; starts the timers</span>"><kbd>C</kbd><b>"Charlie!"</b><span>Bark + live conversation</span></button>
+    <button data-e="skip" class="day-only"><kbd>S</kbd><b>Next step now</b><span>Skip the night, or the wait for the next reminder</span></button>
+    <button data-e="pill_due" class="day-only"><kbd>P</kbd><b>Pill time now</b><span>Move the clock to the pill time</span></button>
+    <button data-e="reset" data-story="<kbd>R</kbd><b>Restart the story</b><span>Back to the wake-up, clock back to the start time</span>"><kbd>R</kbd><b>New day</b><span>Clock back to just before the wake-up</span></button>
+    <button data-e="save" class="story-only"><b>Save as default</b><span>Write these settings into shared/config.yaml</span></button>
   </div>
 
   <h2>What happened (clock time)</h2>
@@ -166,12 +186,32 @@
   const $ = (id) => document.getElementById(id);
   const DAY = 86400;
   const keys = { t:"pill_taken", m:"moved", c:"charlie", w:"wake_up", p:"pill_due", s:"skip", n:"skip", q:"pause", x:"pause", " ":"pause", r:"reset" };
-  const COLORS = { wake:"var(--wake)", pill:"var(--ok)", pill_missed:"var(--due)", walk:"var(--walk)", walk_start:"#9fd0ff", walk_short:"#7fb4e6", nudge:"var(--muted)", sleep:"var(--sleep)" };
-  let loaded = false, clockState = null, clockAt = 0;
+  const COLORS = { call:"var(--accent)", walk_sad:"var(--sleep)", wake:"var(--wake)", pill:"var(--ok)", pill_missed:"var(--due)", walk:"var(--walk)", walk_start:"#9fd0ff", walk_short:"#7fb4e6", nudge:"var(--muted)", sleep:"var(--sleep)" };
+  let loaded = false, clockState = null, clockAt = 0, storyMode = false, modeSet = false;
+  const ST = ["x", "repeat_s", "max_reasks", "dock_near_mm", "y", "walk_s", "follow_window_s", "gap_s", "motion_energy",
+              "speed_slow", "speed_fast", "volume"];
+  function setMode(story) {               // the same page drives Wiam's day demo or Charlie's story
+    if (modeSet && story === storyMode) return;
+    storyMode = story; modeSet = true;
+    document.body.classList.toggle("story", story);
+    document.querySelectorAll("[data-story]").forEach(el => {
+      if (el.dataset.day === undefined) el.dataset.day = el.innerHTML;
+      el.innerHTML = story ? el.dataset.story : el.dataset.day;
+    });
+    document.title = story ? "Charlie's story" : "Charlie demo panel";
+  }
+  const fmt = s => s >= 3600 ? Math.floor(s / 3600) + " h " + Math.round(s % 3600 / 60) + " min"
+                 : s >= 60 ? Math.round(s / 60) + " min" : Math.round(s) + " s";
 
   // ---------- settings: applied as soon as a field changes ----------
   function readSettings() {
     const out = { day_s: +$("day_s").value };
+    if (storyMode) {
+      for (const k of ST) if ($("st_" + k).value !== "") out[k] = +$("st_" + k).value;
+      out.drive = $("st_drive").checked;
+      if ($("st_start_at").value) out.start_at = $("st_start_at").value;
+      return out;
+    }
     for (const id of ["wake_at", "sleep_at", "pill_at"]) if ($(id).value) out[id] = $(id).value;
     if (+$("still_m").value > 0) out.still_s = +$("still_m").value * 60;
     if (+$("reask_m").value > 0) out.reask_s = +$("reask_m").value * 60;
@@ -184,12 +224,14 @@
     loaded = false; refresh();
   }
   ["day_s", "wake_at", "sleep_at", "pill_at", "still_m", "reask_m", "walk_m"].forEach(id => $(id).addEventListener("change", apply));
+  [...ST, "drive", "start_at"].forEach(k => $("st_" + k).addEventListener("change", apply));
 
   const send = (e) => fetch("/event/" + e, { method: "POST" }).then(refresh);
-  document.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => send(b.dataset.e));
+  document.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => send(storyMode && b.dataset.eStory ? b.dataset.eStory : b.dataset.e));
   document.addEventListener("keydown", ev => {
     if (ev.target.closest("input, select") || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-    const e = keys[ev.key.toLowerCase()]; if (e) { ev.preventDefault(); send(e); }
+    let e = keys[ev.key.toLowerCase()]; if (storyMode && e === "wake_up") e = "charlie";
+    if (e) { ev.preventDefault(); send(e); }
   });
 
   // ---------- the 24-hour dial (midnight at the top, clockwise) ----------
@@ -247,6 +289,7 @@
   async function refresh() {
     try {
       const s = await (await fetch("/state")).json();
+      setMode(s.mode === "story");
       clockState = s.clock; clockAt = performance.now();
       drawDial(s.clock);
       $("day").textContent = `Day ${s.clock.day} · ` + (s.clock.realtime ? "real time"
@@ -258,8 +301,20 @@
       eyes.style.setProperty("--period", (s.eyes.period_ms || 3000) + "ms");
       eyes.querySelectorAll(".eye").forEach(el => { el.style.background = s.eyes.color; el.style.boxShadow = "0 0 18px " + s.eyes.color + "88"; });
       card("wake", s.wake); card("pill", s.pill); card("move", s.move);
-      const wb = $("walkbtn"); wb.firstChild.textContent = s.walking ? "Stop walking" : "Start walking";
+      const wb = $("walkbtn"); wb.firstChild.textContent = storyMode ? "I moved" : (s.walking ? "Stop walking" : "Start walking");
       const p = $("pause"); p.firstChild.textContent = s.paused ? "Resume" : "Pause"; p.classList.toggle("resume", s.paused);
+      if (!loaded && storyMode) {
+        const st = s.story_settings;
+        for (const k of ST) $("st_" + k).value = st[k];
+        $("st_drive").checked = !!st.drive; $("st_start_at").value = st.start_at; $("day_s").value = String(st.day_s);
+        $("speedx").textContent = st.day_s >= DAY ? "" : "(1 hour = " + +(st.day_s / 24).toFixed(1) + " s)";
+        loaded = true;
+      }
+      if (storyMode) {                      // clock equivalent of each story time
+        const sp = s.clock.speed;
+        document.querySelectorAll("[data-eq]").forEach(el => { const v = +$(el.dataset.eq).value;
+          el.textContent = v ? "≈ " + fmt(v * sp) + " of the day" : ""; });
+      }
       if (!loaded) {
         const st = s.settings;
         $("day_s").value = String(st.day_s); $("wake_at").value = st.wake_at; $("sleep_at").value = st.sleep_at; $("pill_at").value = st.pill_at;

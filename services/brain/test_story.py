@@ -117,7 +117,7 @@ def test_idle_user_is_reminded_after_y_with_pleading_eyes():
     run(f, s, 2)
     c = [c for c in f.calls if c[1] == "encouraging"][0]
     assert c[2] == "pleading" and 7 <= c[0] - t0 <= 7.6
-    run(f, s, 9)                       # 2 s walk, then the window restarts: a second reminder 7 s later
+    run(f, s, 11)                      # 2 s walk, then an 8 s break / 7 s window: a second reminder after it
     assert len([c for c in f.calls if c[1] == "encouraging"]) == 2
 
 
@@ -139,26 +139,36 @@ def test_weak_motion_does_not_count():
     assert any(c[1] == "encouraging" for c in f.calls)
 
 
+def _asks(f):
+    return [c for c in f.calls if c[1] == "encouraging" and c[2] == "pleading"]
+
+
+def _sads(f):
+    return [c for c in f.calls if c[1] == "encouraging" and c[2] == "sad"]
+
+
 def test_backs_off_after_max_reasks_until_user_moves():
-    f, s = make(x=1000, y=2, max_reasks=2)
+    f, s = make(x=1000, y=2, max_reasks=2, follow_window_s=3)
     awake_and_called(f, s)
-    run(f, s, 30)
-    enc = [c for c in f.calls if c[1] == "encouraging"]
-    assert len(enc) == 3 and enc[-1][2] is None       # 2 reminders + calm back-off
-    s.on_motion(0.5)
-    run(f, s, 3)
-    assert len([c for c in f.calls if c[1] == "encouraging"]) == 4   # asks again after moving then idling
+    run(f, s, 60)
+    assert len(_asks(f)) == 2 and len(_sads(f)) == 2  # 2 reminders, each ending sad, then quiet
+    assert s.move_quiet
+    s.on_motion(0.5); s.drain()
+    assert f.calls[-1][1] == "reward"                 # moving on their own later: praise
+    run(f, s, 11)                                     # praise, 8 s break, then 2 s of sitting again
+    assert len(_asks(f)) == 3                         # asks again after moving then idling
 
 
 def test_moving_after_a_reminder_gives_happy_once():
-    f, s = make(x=1000, y=2)
+    f, s = make(x=1000, y=2, follow_window_s=4)
     awake_and_called(f, s)
     run(f, s, 3)                                   # reminder 1 went out, robot is walking
-    s.on_motion(0.5)                               # user moves: praise waits until the robot stopped
+    s.on_motion(0.5)                               # user moves: praise comes at the end of the walk time
     assert all(c[1] != "reward" for c in f.calls)
-    run(f, s, 3); s.drain()
+    run(f, s, 5); s.drain()
     rewards = [c for c in f.calls if c[1] == "reward"]
     assert len(rewards) == 1 and rewards[0][3] == {"task": "walk"}
+    assert _sads(f) == []
     stops = [m for m in f.moves if m[1] == "stop"]
     assert stops and stops[0][0] <= rewards[0][0]      # robot stopped before it spoke
     s.on_motion(0.5); s.on_motion(0.5); s.drain()      # still moving: no second praise
@@ -166,11 +176,55 @@ def test_moving_after_a_reminder_gives_happy_once():
 
 
 def test_moving_after_backoff_gives_happy():
-    f, s = make(x=1000, y=2, max_reasks=2)
+    f, s = make(x=1000, y=2, max_reasks=2, follow_window_s=3)
     awake_and_called(f, s)
-    run(f, s, 20)
+    run(f, s, 60)
     s.on_motion(0.5); s.drain()
     assert f.calls[-1][1] == "reward"
+
+
+# ---------- walk time: the user has follow_window_s after "Follow me" to move ----------
+def test_no_movement_in_the_whole_walk_time_gives_sad_at_its_end():
+    f, s = make(x=1000, y=2, walk_s=2, follow_window_s=10)
+    awake_and_called(f, s)
+    run(f, s, 2.5)
+    ask = _asks(f)[0][0]
+    run(f, s, 9)
+    assert _sads(f) == []                          # not before the walk time is over
+    run(f, s, 2)
+    sad = _sads(f)
+    assert len(sad) == 1 and 10 <= sad[0][0] - ask <= 10.6
+    assert sad[0][3]["attempt"] > s.max_reasks      # Wiam's gentle walk back-off line
+    assert all(c[1] != "reward" for c in f.calls)
+
+
+def test_moving_late_in_the_walk_time_still_counts():
+    f, s = make(x=1000, y=2, walk_s=2, follow_window_s=10)
+    awake_and_called(f, s)
+    run(f, s, 2.5)
+    run(f, s, 7)                                   # robot stopped long ago, walk time still running
+    s.on_motion(0.5)
+    run(f, s, 3); s.drain()
+    assert [c[1] for c in f.calls].count("reward") == 1 and _sads(f) == []
+
+
+def test_a_failed_sound_does_not_stop_the_story():
+    f, s = make(x=1, y=1000)
+    awake_and_called(f, s)
+    real = f.express
+
+    def flaky(emotion, mood=None, **kw):
+        real(emotion, mood, **kw)
+        if emotion == "reward":
+            raise RuntimeError("no answer from the board")
+    f.express = flaky
+    run(f, s, 2)                                   # pill request 1
+    s.on_pill_removed(); s.drain()                 # "thank you" fails half-way
+    assert s.topic is None and s.quiet_until > f.t # the pill episode still ended: break, no stuck topic
+    f.express = real
+    s.y = 2
+    run(f, s, 15)
+    assert _asks(f)                                # the story went on: a walk ask came later
 
 
 def test_moving_without_a_reminder_stays_quiet():
@@ -231,6 +285,57 @@ def test_timers_wait_while_charlie_speaks():
     n = len(f.calls)
     run(f, s, 10)
     assert len(f.calls) == n
+
+
+# ---------- one topic at a time: pill and walk never come together ----------
+def _times(f, emotion):
+    return [c[0] for c in f.calls if c[1] == emotion]
+
+
+def test_no_walk_ask_while_the_pill_is_being_asked():
+    f, s = make(x=1, y=2, gap_s=8)                 # user sits the whole time
+    awake_and_called(f, s)
+    run(f, s, 40)
+    pills, sad, walks = _times(f, "pleading"), _times(f, "sad"), _times(f, "encouraging")
+    assert len(pills) == 3 and len(sad) == 1       # 3 asks, then the sad back-off
+    assert all(not (pills[0] <= w < sad[0] + 8) for w in walks)    # no walk ask during the episode or the break
+    assert walks and walks[0] >= sad[0] + 8
+
+
+def test_pill_taken_then_a_break_before_any_walk_ask():
+    f, s = make(x=1, y=2, gap_s=8)
+    awake_and_called(f, s)
+    run(f, s, 2)                                   # pill request 1 went out
+    s.on_pill_removed(); s.drain()                 # pill taken: thank you
+    taken = _times(f, "reward")[0]
+    run(f, s, 20)
+    walks = _times(f, "encouraging")
+    assert walks and walks[0] >= taken + 8         # "Follow me" only after the break
+
+
+def test_pill_waits_for_the_walk_and_a_break_and_goes_first():
+    f, s = make(x=5, y=2, walk_s=2, gap_s=8, follow_window_s=2)
+    awake_and_called(f, s)
+    run(f, s, 40)
+    walks, pills = [c[0] for c in _asks(f)], _times(f, "pleading")
+    walk_end = _sads(f)[0][0]                      # walk episode ended (no movement: sad)
+    assert walks[0] < pills[0]                     # walk was asked first (y < x)
+    assert pills[0] >= walk_end + 8                # pill only after the walk ended + break
+    later_walks = [w for w in walks if w > walks[0]]
+    assert all(w > pills[0] for w in later_walks)  # the pill went before the next walk ask
+
+
+def test_pill_never_taken_ends_with_sad_eyes_and_speech():
+    f, s = make(x=1, y=1000, max_reasks=3)
+    awake_and_called(f, s)
+    run(f, s, 30)
+    asks = [c for c in f.calls if c[1] == "pleading"]
+    assert [a[3]["attempt"] for a in asks] == [1, 2, 3]
+    assert f.names()[-1] == ("sad", None)          # sad reaction: sad eyes + gentle back-off line
+    assert s.pill == "gave_up"
+    n = len(f.calls)
+    run(f, s, 30)
+    assert len([c for c in f.calls[n:] if c[1] in ("pleading", "sad")]) == 0   # no more nagging
 
 
 if __name__ == "__main__":
