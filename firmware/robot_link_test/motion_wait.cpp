@@ -16,8 +16,8 @@ struct MotionDrive {
   bool leadRssiValid = false;
   // Calibrated close-range signal reference, not a measured physical distance.
   static constexpr float CLOSE_RSSI_DBM = -80.0f;
-  // 10*log10(1/0.7): a 30% drop in received power, not 30% of dBm.
-  static constexpr float RETURN_DROP_DB = 1.54902f;
+  // 10*log10(1/0.8): a 20% drop in received power, not 20% of dBm.
+  static constexpr float RETURN_DROP_DB = 0.96910f;
   float initialRssi = 0, leadInitialRssi = 0;
 
   const char* phaseName() const {

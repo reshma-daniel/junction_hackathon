@@ -17,8 +17,8 @@ int main() {
  assert(session.initialRssi==-92 && session.started);
  session.receive(true,10020);session.tick(10020,true,-80);
  assert(session.leadInitialRssi==-92 && session.phase==MotionDrive::LEAD);
- session.ping(11000);session.tick(11000,true,-93.54f);assert(session.phase==MotionDrive::LEAD);
- session.ping(11020);session.tick(11020,true,-93.56f);assert(session.returning && session.target==255);
+ session.ping(11000);session.tick(11000,true,-92.96f);assert(session.phase==MotionDrive::LEAD);
+ session.ping(11020);session.tick(11020,true,-92.98f);assert(session.returning && session.target==255);
  advance(session,11040,12000,-85);assert(session.returning && session.speed==255);
  session.ping(12020);session.tick(12020,true,-80);assert(session.phase==MotionDrive::LEAD && !session.returning);
  advance(session,12040,13000,-80);assert(session.speed==-255 && session.initialRssi==-92);
@@ -39,7 +39,7 @@ int main() {
  assert(d.phase==MotionDrive::LEAD && d.speed==-255); // Still does not return.
  d.receive(true,11260);d.tick(11260,true,-75);
  assert(d.leadInitialRssi==-75 && d.speed==-255); // Do not reset baseline.
- d.tick(12020,true,-76.54f);assert(d.phase==MotionDrive::LEAD);
+ d.tick(12020,true,-75.96f);assert(d.phase==MotionDrive::LEAD);
  d.tick(12040,true,-82.0f);assert(d.phase==MotionDrive::APPROACH && d.target==255 && !d.speed);
  d.receive(true,12060);assert(d.phase==MotionDrive::APPROACH);
  advance(d,12060,13000,-82);assert(d.speed==255);

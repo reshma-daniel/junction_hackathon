@@ -16,7 +16,7 @@ Each normal bridge Run sends `session_start`, stops any old activity and capture
 one fresh smoothed RSSI before departure as `initial_rssi_dbm`. This measured
 baseline remains unchanged throughout that run, including subsequent lead phases.
 A new Run/`session_start` resets it. For example, a -92 dBm initial measurement
-means return at <= -93.54902 dBm, not relative to the fixed -80 reference.
+means return at <= -92.96910 dBm, not relative to the fixed -80 reference.
 
 
 - Boot / idle: stopped. An initial `moving:true` alone does not start driving.
@@ -30,9 +30,9 @@ means return at <= -93.54902 dBm, not relative to the fixed -80 reference.
 - After departure, false reports do not change travel direction. Return from
   lead is triggered only by the RSSI threshold below. A false-to-true transition
   while already leading does not reset the RSSI reference.
-- In lead, a received-power drop of 30% from the leading baseline switches back
+- In lead, a received-power drop of 20% from the leading baseline switches back
   to approach on the next loop. Since RSSI is logarithmic, this is a drop of
-  `10*log10(1/0.7) = 1.54902 dB`, applied to the smoothed reading: return at <= measured run baseline minus 1.54902 dB. This small
+  `10*log10(1/0.8) = 0.96910 dB`, applied to the smoothed reading: return at <= measured run baseline minus 0.96910 dB. This small
   threshold may react to radio fluctuations; tune `RETURN_DROP_DB` if needed.
 - After an RSSI-triggered return, robot stays in `return` until smoothed RSSI
   reaches -80 dBm or stronger, then automatically reverses into lead. No new IMU
