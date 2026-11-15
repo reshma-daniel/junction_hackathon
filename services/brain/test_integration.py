@@ -251,3 +251,21 @@ def test_existing_cli_opens_each_board_once_and_stops_on_exit(monkeypatch):
     assert ("robot_mode", "stop") in robot.calls
     assert not any(key == "robot_drive" for key, value in robot.calls)
     assert ("dock_near", "10") in robot.calls
+
+
+def test_incompatible_firmware_cleanup_preserves_original_startup_error(monkeypatch):
+    import atech
+    class OldFirmware(BoardFake):
+        closed = False
+        def call(self, action, value="", **kwargs):
+            if action == "speaker_set_volume":
+                raise RuntimeError("speaker startup rejected")
+            if action == "robot_mode":
+                raise RuntimeError("shutdown stop rejected")
+        def close(self): self.closed = True
+    board = OldFirmware()
+    monkeypatch.setattr(atech.Board, "connect", lambda port=None: board)
+    monkeypatch.setattr(sys, "argv", ["run_story.py", "--robot-port", "COM5", "--no-drive"])
+    with pytest.raises(RuntimeError, match="speaker startup rejected"):
+        run_story.main()
+    assert board.closed

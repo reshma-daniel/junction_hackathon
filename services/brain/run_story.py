@@ -256,10 +256,13 @@ def main() -> None:
         print("\nbye")
     finally:
         try:
-            if charlie:
-                charlie.close()
-            else:
-                robot.call("robot_mode", "stop", timeout=1)
+            try:
+                if charlie:
+                    charlie.close()
+                else:
+                    robot.call("robot_mode", "stop", timeout=1)
+            except Exception as e:
+                print(f"! shutdown stop not acknowledged: {e}", flush=True)
         finally:
             robot.close()
             if wearable:
