@@ -71,7 +71,10 @@ class AtechUsbLink(Link):
                 if stop.is_set():
                     self.board.call(f"{self.instance}_stop", "")
                     return False
-                self.board.call(self.action, base64.b64encode(c).decode("ascii"), timeout=5.0)
+                try:
+                    self.board.call(self.action, base64.b64encode(c).decode("ascii"), timeout=5.0)
+                except Exception as e:  # one chunk not acknowledged: skip it, keep talking
+                    print(f"! speaker chunk skipped ({type(e).__name__})", file=sys.stderr, flush=True)
         return True
 
     def close(self) -> None:

@@ -38,7 +38,8 @@ Edit the steps in `reactions.yaml` and the words in `phrases.yaml`; then `python
 the new lines.
 
 ## Live conversation (ElevenLabs agent)
-Say "Charlie" → happy bark → a short live conversation (max 90 s) in Charlie's voice.
+Say "Charlie" → happy bark → a short mood check-in (30 s max) in Charlie's voice.
+In the story: `python services/brain/run_story.py ... --listen --chat` (panel: "Live conversation" switch).
 ```bash
 python agent_setup.py               # once: creates the "Charlie" agent (id saved in agent.json)
 python voice.py chat --link laptop  # talk now
@@ -46,8 +47,10 @@ python voice.py charlie --chat      # wake word -> bark -> conversation
 ```
 - The agent: your voice (flash v2, required for English agents), warm 1–2 sentence replies, never
   diagnoses, hands off to the MIELI crisis line (09 2525 0111) or 112 if someone mentions self-harm.
-- Tools it can call: `bark`, `set_eyes` (emits `robot.eyes` for the brain), `end_conversation`.
-- Laptop mic is muted while Charlie speaks. Ends on "bye", 20 s of silence, or 90 s.
+- Tools it can call: `bark`, `set_eyes` (emits `robot.eyes` for the brain), `emergency`, `end_conversation`.
+- Emergency (the `emergency` tool, or words like "don't feel safe"): red banner on the panel with MIELI
+  09 2525 0111 and 112 until dismissed; the silence stop is off, the 30 s maximum stays.
+- Laptop mic is muted while Charlie speaks. Ends on "bye", 5 s of silence, or 30 s (after its sentence).
 - Offline / no agent: falls back to the pre-rendered greeting. Brain message: `{"type":"voice.chat"}`.
 - Change the personality in `agent_setup.py` (PROMPT), then `python agent_setup.py --update`.
   The API key needs the Agents (write) permission.

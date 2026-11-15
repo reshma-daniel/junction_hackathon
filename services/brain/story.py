@@ -62,6 +62,7 @@ class Story:
     def _reset_state(self) -> None:
         self.following = False                # inside the walk time
         self.follow_until = 0.0
+        self._after_resume: list = []         # next steps that finished during a pause run on Resume
         self.moved_in_window = False
         self.topic: Optional[str] = None      # None | "pill" | "move": what Charlie is asking about right now
         self.quiet_until = 0.0                # break after a topic ends: no new ask before this
@@ -173,6 +174,9 @@ class Story:
             pending_walk = self._walk_pending
             self._walk_pending = False
         self.log("Resumed")
+        waiting, self._after_resume = self._after_resume, []
+        for step in waiting:
+            step()
         if pending_walk:
             self._begin_walk()
 
@@ -202,6 +206,9 @@ class Story:
 
     def worker(self) -> None:
         while True:
+            if self.paused:            # Pause holds everything: queued speech waits until Resume
+                time.sleep(0.1)
+                continue
             self.run_one_job(block=True)
 
     def _say(self, emotion: str, then: Optional[Callable[[], None]] = None, **kw) -> None:
@@ -216,7 +223,10 @@ class Story:
                 self.act.express(emotion, **kw)
             finally:
                 if then and gen == self.gen:               # the story goes on even if the robot missed a sound
-                    then()
+                    if self.paused:                        # paused meanwhile: the next step waits for Resume
+                        self._after_resume.append(then)
+                    else:
+                        then()
         self._enqueue(job)
 
     # ---------- story steps ----------
@@ -235,6 +245,9 @@ class Story:
 
     def on_called(self) -> None:
         """The user said "Charlie"."""
+        if self.paused:
+            self.log('Heard "Charlie" while paused: ignored')
+            return
         with self.lock:
             if self.phase in ("new", "starting"):
                 return                                    # still waking up: not listening yet

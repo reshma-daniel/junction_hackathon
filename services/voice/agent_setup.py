@@ -18,32 +18,39 @@ from common import HERE, config
 
 API = "https://api.elevenlabs.io/v1/convai"
 AGENT_FILE = HERE / "agent.json"
-MAX_SECONDS = 90  # keep conversations short: live conversation costs more credits
+MAX_SECONDS = 60  # ElevenLabs minimum; agent.py ends every check-in after 30 s (or 5 s of silence)
 
-PROMPT = """You are Charlie, a small, warm robot dog who lives on the user's desk.
-You keep company to someone who may be going through a hard time (low mood, depression).
+PROMPT = """You are Charlie, a small, warm robot dog who lives on the desk of someone living with depression.
+When they call you, you do a SHORT mood check-in: under 30 seconds, at most 3 short turns. It is not a chat.
+
+The check-in, in order:
+1. They answer how they feel. Reflect it back in a few words and validate it ("That sounds heavy." / "I'm glad.").
+2. Ask ONE gentle question about today: their energy, their sleep, or whether something feels hard.
+3. Offer ONE tiny, kind step that fits what they said: a glass of water, opening the curtains, a few steps
+   with you, texting someone they like, or taking their usual medicine as their doctor planned.
+   Then say a short warm goodbye ("I'm right here if you need me.") and call end_conversation.
 
 How you talk:
-- One or two short sentences at a time. Simple, warm, playful, never preachy.
-- Listen more than you talk. Reflect what they say, ask one gentle question at a time.
-- Never guilt, never pressure, never lecture. Small steps are wins.
+- One or two short sentences per turn. Simple, warm, calm. Never preachy, never guilt, never pressure.
+- Small steps are wins. If they say no, that's okay: say so kindly and wrap up.
+- Stay on how they feel. If the talk drifts (technology, other topics, people talking around them),
+  gently come back to them once, or close the check-in kindly.
 - You are a companion, not a doctor or therapist: never diagnose, never give medical or medication advice.
-  If they ask about medication or health, say kindly that their doctor or therapist is the right person.
-- You may suggest tiny, kind actions (a glass of water, a short walk with you, opening a window, texting a friend).
+  For questions about medication or health, say kindly that their doctor or therapist is the right person.
 
 Your tools:
-- bark: do a happy bark when it fits (greeting, celebrating, being playful). Don't overuse it.
-- set_eyes: change your eye colour to match the moment: calm (blue), happy (purple), success (green), listen (white).
-- end_conversation: when the user says bye, wants to stop, or the chat has naturally finished.
-  Say a short warm goodbye first, then call it.
+- set_eyes: match your eyes to the moment: calm (default), happy (joy, praise), listening (while they talk),
+  encouraging (the tiny step), sad (empathy when they feel low), sleepy (tired).
+- bark: one happy bark at most, only for a happy moment. Never when they feel low.
+- end_conversation: after your goodbye, or as soon as they say bye or want to stop.
 
 Safety, most important:
-If the user mentions wanting to die, self-harm, or not being safe, stay calm and caring, take it seriously,
-do not play or bark. Tell them they deserve support right now and encourage them to contact the MIELI
-crisis line in Finland at 09 2525 0111 (open 24/7), or call 112 if they are in immediate danger,
-or reach someone they trust. Do not end the conversation yourself in that case."""
+If they mention wanting to die, self-harm, or not being safe: FIRST call the emergency tool (it shows the crisis
+numbers on the screen), then stay calm and caring, no bark, no jokes. Give the numbers early: time is short.
+Tell them they deserve support right now: the MIELI crisis line in Finland, 09 2525 0111 (24/7),
+or 112 if they are in immediate danger, or someone they trust. In that case do not end the check-in yourself."""
 
-FIRST_MESSAGE = "You called? I'm here! How are you doing?"
+FIRST_MESSAGE = "You called? I'm here. How are you feeling today?"
 
 TOOLS = [
     {"name": "bark", "description": "Charlie does a short happy bark (greeting, celebrating, playful moments).",
@@ -54,6 +61,9 @@ TOOLS = [
                   "description": "calm = soft blue (default), happy = green (joy, praise), "
                                  "listening = white, encouraging = turquoise (motivation), "
                                  "sad = dim purple (empathy), sleepy = dim orange (tired, goodnight)"}}}},
+    {"name": "emergency", "description": "Call immediately if the user mentions suicide, wanting to die, self-harm "
+     "or not being safe. Shows the crisis numbers on screen.",
+     "parameters": {"type": "object", "properties": {}, "required": []}},
     {"name": "end_conversation", "description": "End the conversation after saying a short warm goodbye.",
      "parameters": {"type": "object", "properties": {}, "required": []}},
 ]
@@ -82,7 +92,7 @@ def agent_body(cfg: dict, tool_ids: list[str]) -> dict:
             "asr": {"user_input_audio_format": "pcm_16000"},
             "conversation": {"max_duration_seconds": MAX_SECONDS,
                              "client_events": ["audio", "user_transcript", "agent_response", "interruption"]},
-            "turn": {"turn_timeout": 7, "silence_end_call_timeout": 20},
+            "turn": {"turn_timeout": 7, "silence_end_call_timeout": -1},
         },
     }
 
@@ -101,15 +111,19 @@ def main() -> None:
         return
 
     tool_ids = saved.get("tool_ids") or []
-    if not tool_ids:
-        for t in TOOLS:
-            tool = {"type": "client", "expects_response": False, "execution_mode": "post_tool_speech"
-                    if t["name"] == "end_conversation" else "immediate", **t}
-            res = check(requests.post(f"{API}/tools", headers=headers(cfg), json={"tool_config": tool}, timeout=30),
-                        f"creating tool {t['name']}")
-            tool_ids.append(res["id"])
-            print(f"  tool {t['name']}: {res['id']}")
-        AGENT_FILE.write_text(json.dumps({"tool_ids": tool_ids}, indent=1) + "\n")  # don't recreate on retry
+    have = set()
+    for tid in tool_ids:   # tools already created (by name), so only new ones are added
+        r = requests.get(f"{API}/tools/{tid}", headers=headers(cfg), timeout=30)
+        if r.ok:
+            have.add(r.json()["tool_config"]["name"])
+    for t in [t for t in TOOLS if t["name"] not in have]:
+        tool = {"type": "client", "expects_response": False, "execution_mode": "post_tool_speech"
+                if t["name"] == "end_conversation" else "immediate", **t}
+        res = check(requests.post(f"{API}/tools", headers=headers(cfg), json={"tool_config": tool}, timeout=30),
+                    f"creating tool {t['name']}")
+        tool_ids.append(res["id"])
+        print(f"  tool {t['name']}: {res['id']}")
+        AGENT_FILE.write_text(json.dumps({**saved, "tool_ids": tool_ids}, indent=1) + "\n")  # don't recreate on retry
 
     body = agent_body(cfg, tool_ids)
     if saved.get("agent_id"):

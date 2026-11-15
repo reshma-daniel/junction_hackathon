@@ -9,6 +9,8 @@
 Boards: robot = firmware/robot_main (eyes, mic, speaker, dock distance sensor on port 7)
         wearable = firmware/wearable (IMU). `atech ports` lists the ports.
 --listen: hear "Charlie" on the laptop mic too (offline).
+--chat:   "Charlie" starts a live conversation (ElevenLabs agent, Charlie's voice: a ~30 s mood check-in, max 60 s) instead of the
+          pre-recorded greeting; the panel can switch it on/off. Needs services/voice/.env (API key) + agent.json.
 Keyboard stand-ins while rehearsing (type a key + Enter):  c = "Charlie"   p = pill taken   m = user moved
 Story logic and the table of what happens when: services/brain/story.py
 """
@@ -209,6 +211,8 @@ def main() -> None:
     ap.add_argument("--volume", type=float, default=d.get("volume", 0.1))
     ap.add_argument("--listen", action="store_true",
                     help='also hear "Charlie" on the laptop microphone (offline, Vosk); muted while Charlie speaks')
+    ap.add_argument("--chat", action="store_true",
+                    help='"Charlie" starts a live ElevenLabs conversation through the robot (laptop mic)')
     ap.add_argument("--mic", help="laptop microphone device name/number for --listen (default: system)")
     ap.add_argument("--panel", action="store_true",
                     help="set up and run the story from Wiam's demo panel in the browser (Story mode)")
@@ -248,6 +252,7 @@ def main() -> None:
         print("Firmware: robot=firmware/robot_main; wearable=firmware/wearable; standalone bridge is not needed.", flush=True)
         drive = {"on": not args.no_drive, "volume": args.volume}
         mics = {"mic_robot": True, "mic_laptop": bool(args.listen)}   # which mic may start a "Charlie" call
+        chat_state = {"on": bool(args.chat), "active": False, "emergency": False}  # live conversation on "Charlie"
         dock_near = {"mm": d.get("dock_near_mm", 10)}
         real_walk, real_stop, real_pill_drive = charlie.walk, charlie.walk_stop, charlie.pill_drive
 
@@ -263,6 +268,7 @@ def main() -> None:
 
         def runner_get() -> dict:
             return {"speed_slow": charlie.slow, "speed_fast": charlie.fast, "drive": drive["on"], **mics,
+                    "chat": chat_state["on"], "chatting": chat_state["active"], "emergency": chat_state["emergency"],
                     "mic_laptop_available": bool(args.listen),
                     "volume": drive["volume"], "navigation": navigation.snapshot()}
 
@@ -285,6 +291,20 @@ def main() -> None:
                 if not drive["on"]:
                     charlie.pill_stop()
                     real_stop()
+            if new.get("emergency") is False and chat_state["emergency"]:
+                chat_state["emergency"] = False
+                try:
+                    from agent import clear_emergency
+                    clear_emergency()   # the conversation goes back to the normal limits
+                except Exception:
+                    pass
+                changed.append("emergency banner dismissed")
+            if new.get("end_chat") and chat_state["active"]:
+                end_chat()              # the story goes on (pill, walk); Pause stops everything instead
+                changed.append("conversation ended from the panel")
+            if "chat" in new and bool(new["chat"]) != chat_state["on"]:
+                chat_state["on"] = bool(new["chat"])
+                changed.append("live conversation " + ("on" if chat_state["on"] else "off"))
             for key, name in (("mic_robot", "robot mic"), ("mic_laptop", "laptop mic")):
                 if key in new and bool(new[key]) != mics[key]:
                     if key == "mic_laptop" and not args.listen:
@@ -321,7 +341,70 @@ def main() -> None:
                       motion_energy=d.get("motion_energy_moving", 0.05), dock_near_mm=d.get("dock_near_mm", 10),
                       log=story_log)
         inputs = StoryInputs(story, navigation, telemetry=telemetry.record)
-        inputs.hear_calls = lambda: mics["mic_robot"]
+        inputs.hear_calls = lambda: mics["mic_robot"] and not chat_state["active"]
+
+        # ---- Wiam: live conversation on "Charlie" (ElevenLabs agent through the robot speaker) ----
+        sys.path.insert(0, str(REPO / "services" / "voice"))
+        real_express = charlie.express
+        real_pause, real_restart = getattr(story, "pause", None), getattr(story, "restart", None)
+
+        def on_agent_event(m: dict) -> None:   # the agent's set_eyes tool -> the robot's eye mood
+            if m.get("type") == "voice.emergency":   # shown in red on the panel until dismissed
+                chat_state["emergency"] = True
+                story_log(f"!!! EMERGENCY ({m.get('why')}): crisis numbers shown on the panel")
+                return
+            if m.get("type") == "robot.eyes" and m.get("mood"):
+                try:
+                    charlie._robot("robot_express", m["mood"])
+                except Exception:
+                    pass
+
+        def talk() -> None:
+            from agent import chat
+            chat_state["active"] = True
+            charlie._busy.set()
+            charlie.now_playing = {"emotion": "called", "reaction": "live conversation", "mood": "happy"}
+            story_log("Live conversation with Charlie (ElevenLabs): a mood check-in, 30 s max")
+            try:
+                charlie._robot("robot_express", "happy")
+                charlie.voice.emit = on_agent_event
+                chat(charlie.voice, mic_device=args.mic)   # happy bark, then talk; offline -> the greeting
+            finally:
+                charlie.voice.emit = lambda m: None
+                try:
+                    charlie._robot("robot_express", "done")
+                except Exception:
+                    pass
+                charlie._quiet_since = time.monotonic()
+                charlie.now_playing = None
+                charlie._busy.clear()
+                chat_state["active"] = False
+                story_log("Live conversation ended")
+
+        def express(emotion: str, mood=None, **kw) -> None:
+            if emotion == "called" and chat_state["on"]:
+                return talk()
+            return real_express(emotion, mood=mood, **kw)
+        charlie.express = express
+
+        def end_chat() -> None:
+            try:
+                from agent import end_chat as end
+                end()
+            except Exception:
+                pass
+
+        def pause() -> None:   # Pause stops everything at once: wheels, live conversation, the current sentence
+            real_pause()
+            end_chat()
+            charlie.voice.stop()
+
+        def restart() -> None:
+            end_chat()
+            charlie.voice.stop()
+            real_restart()
+        if real_pause and real_restart:
+            story.pause, story.restart = pause, restart
         if args.panel:
             from story_panel import StoryPanel, serve
             panel = StoryPanel(story, charlie, runner_get, runner_set, day_s=d.get("panel_day_s", 180),
@@ -332,12 +415,11 @@ def main() -> None:
         if wearable:
             threading.Thread(target=wearable_events, args=(wearable, story, inputs), daemon=True).start()
         if args.listen:  # Wiam: the laptop mic hears the word "Charlie" (the robot mic only hears loudness)
-            sys.path.insert(0, str(REPO / "services" / "voice"))
             from wake import WakeListener
 
             def heard(word, confidence):
-                if not mics["mic_laptop"]:
-                    return  # switched off in the panel
+                if not mics["mic_laptop"] or chat_state["active"]:
+                    return  # switched off in the panel, or already talking with Charlie
                 story_log(f'Laptop mic heard "{word}" ({confidence:.2f})')
                 story.on_called()
             wake = WakeListener(heard, is_muted=charlie.voice.mic_muted, device=args.mic)

@@ -327,7 +327,7 @@ class Demo:
             if self.paused:
                 status = "Paused: press Resume to continue"
             elif self.current == "chat":
-                status = "Live conversation (ends on \"bye\", silence or 90 s)"
+                status = "Live conversation (ends on \"bye\", silence or 60 s)"
             elif self.busy:
                 status = "Charlie is talking (the clock waits)"
             elif not self.awake:
