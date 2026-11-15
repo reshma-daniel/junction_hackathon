@@ -13,9 +13,12 @@ modules:
   - {id: dc_motor,   instance: m6,  port: 6}               # Sara: top-right
   - {id: dc_motor,   instance: m9,  port: 9}               # Sara: bottom-left
   - {id: dc_motor,   instance: m14, port: 14}              # Sara: top-left
-  - {id: distance_sensor, instance: distance_sensor, port: 7}   # pill dock: streams distance_sensor_min_distance every 0.5 s; services/brain/story.py reads it
+  - {id: distance_sensor, instance: distance_sensor, port: 7}   # pill dock: dock_hw.cpp emits debounced robot_dock coverage state
 code:
   globals: |
+    #include <BLEDevice.h>
+    #include "../../../robot/ble_scanner.cpp"
+    #include "../../../robot/dock_hw.cpp"
 
     // ===== eyes (owner: Reshma). Copy of firmware/robot/eyes.h + eyes.cpp + eyes_hw.cpp: edit those, then re-paste here =====
     // eyes.* — owner: Reshma. The robot's two eyes: 2x LED Grid (3x3 NeoPixel), ports 13 and 10.
@@ -795,6 +798,8 @@ code:
     }
 
   setup: |
+    dock_begin();
+    robot_ble_begin();
     eyes_begin();
     mic_begin();
     behavior_begin();
@@ -807,7 +812,9 @@ code:
     //   robot_express <mood>   hold this mood while the laptop speaks a phrase (max 15 s)
     //   robot_express done     phrase finished: back to the calm/search cycle
     // Motion actions (Sara): robot_mode <idle|walk|follow|come|stop>, robot_drive "l,r", robot_speed <0..255>, robot_ping
-    if (atech_action == "robot_mode") {
+    if (dock_action(atech_action, atech_value)) {
+      atechDone();
+    } else if (atech_action == "robot_mode") {
       last_rx = millis(); armed = true;
       if (set_mode_name(atech_value)) atechDone();
     } else if (atech_action == "robot_speed") {
@@ -827,6 +834,8 @@ code:
           if (atech_value == eyes_mood_name((EyeMood)i)) { behavior_express((EyeMood)i); atechDone(); break; }
       }
     }
+    dock_tick();
+    robot_ble_tick();
     motion_tick();
     mic_tick();
     behavior_tick();

@@ -246,7 +246,7 @@ class StoryPanel:
                         "progress": 1}
             # 1 · pill
             dock = "dock sensor: " + ("–" if s.last_dock_mm is None else
-                                      f"{s.last_dock_mm} mm ({'pill on it' if s.last_dock_mm < s.dock_near_mm else 'empty'})")
+                                      f"{s.last_dock_mm} mm ({'pill on it' if s.dock_present else 'empty' if s.dock_present is False else 'unknown'})")
             if pill == "done":
                 pill_card = {"state": "ok", "text": f"Taken at {self._when('pill')}",
                              "detail": dock, "progress": 1}

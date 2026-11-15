@@ -1,10 +1,12 @@
 # Architecture
 
-## Key constraint from Atech
-Per atech.dev/llms.txt: boards **cannot talk to each other directly**. Over WiFi a
-WebSocket gateway relays JSON between a board and *your code*; over USB it is
-115200-baud serial, one JSON object per line. So we need a **brain on a laptop**
-that both boards talk to. The "wearable ↔ robot" link is wearable → brain → robot.
+## Current transport
+
+Both boards send SDK JSON events to the laptop over USB. `run_story.py` owns
+one Board connection per device and shares the robot connection/lock between
+voice, eyes and movement. IMU decisions travel through the laptop. Wearable also
+broadcasts a BLE UUID directly for robot-side RSSI measurement; this beacon is
+not a direct board-to-board control channel. See [integration details](INTEGRATION_WANHUI.md).
 
 ```
  ┌────────────────┐   JSON/WS    ┌───────────────────────────────┐   JSON/WS   ┌──────────────────────┐

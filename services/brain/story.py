@@ -78,6 +78,7 @@ class Story:
         self.user_moving_until = 0.0          # wearable showed movement until this time
         # robot walk after the "Follow me" line
         self.walking = False
+        self._walk_pending = False
         self.walk_until = 0.0
         self.walk_fast = False
         self.called_at: Optional[float] = None
@@ -101,6 +102,8 @@ class Story:
                 try:
                     v = int(new[k]) if k in ("max_reasks", "dock_near_mm") else float(new[k])
                 except (TypeError, ValueError):
+                    continue
+                if k == "dock_near_mm" and not 5 <= v <= 500:
                     continue
                 if v < 0 or v == getattr(self, k):
                     continue
@@ -150,7 +153,11 @@ class Story:
                 v = getattr(self, k)
                 if v not in (0.0, float("inf")):
                     setattr(self, k, v + d)
+            pending_walk = self._walk_pending
+            self._walk_pending = False
         self.log("Resumed")
+        if pending_walk:
+            self._begin_walk()
 
     # ---------- job queue: one action at a time, in order ----------
     def _enqueue(self, fn: Callable[[], None]) -> None:
@@ -250,6 +257,19 @@ class Story:
         else:
             self.log("Dock sensor: pill back on the sensor")
 
+    def on_dock(self, removed: bool, mm: int | None = None) -> None:
+        """Already-debounced coverage state. Initial empty dock is not a pickup."""
+        if mm is not None:
+            self.last_dock_mm = mm
+        present = not removed
+        with self.lock:
+            before = self.dock_present
+            self.dock_present = present
+        if before is True and removed:
+            self.on_pill_removed()
+        elif before is not True and present:
+            self.log("Dock sensor: pill on the sensor")
+
     def on_pill_removed(self) -> None:
         with self.lock:
             if self.pill in ("done",):
@@ -264,10 +284,10 @@ class Story:
         self.on_mark("pill", "pill taken")
         self._say("reward", task="pill", then=lambda: self._end_topic("pill"))
 
-    def on_motion(self, energy: float) -> None:
+    def on_motion(self, energy: float, moving: bool | None = None) -> None:
         """Wearable, once per second. energy >= threshold counts as moving."""
         self.last_energy = energy
-        if energy < self.motion_energy:
+        if not (moving if moving is not None else energy >= self.motion_energy):
             return
         now = self.clock()
         with self.lock:
@@ -370,6 +390,9 @@ class Story:
     # ---------- the robot walks after "Follow me" ----------
     def _begin_walk(self) -> None:
         with self.lock:
+            if self.paused:
+                self._walk_pending = True
+                return
             now = self.clock()
             self.walking = True
             self.walk_until = now + self.walk_s
@@ -391,7 +414,7 @@ class Story:
         fast = now < self.user_moving_until
         if fast != self.walk_fast:
             self.walk_fast = fast
-            self.log(f"User {'moves' if fast else 'stopped'}: robot goes {'faster' if fast else 'slower'}")
+            self.log(f"User {'moves' if fast else 'stopped'}: updating walk input")
             self._drive(fast=fast)
         if now >= self.walk_until:
             self._stop_walk()                             # the walk time is judged separately

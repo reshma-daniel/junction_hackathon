@@ -44,13 +44,27 @@ elevenlabs:
 # Charlie's story (services/brain/run_story.py). x and y are the two knobs.
 story:
   x_pill_after_s: 10        # X: seconds after the "Charlie" greeting until the pill request
-  y_idle_window_s: 7        # Y: no movement for this long -> ask the user to move
+  y_idle_window_s: 10        # Y: no movement for this long -> ask the user to move
   pill_repeat_s: 5          # asks again this often while the pill is not taken
   max_reasks: 3             # then a gentle back-off
   walk_s: 10                # robot drives this long after the 'Follow me' line
   topic_gap_s: 8            # break between the pill and a walk ask (both ways): never asked back to back
   follow_window_s: 10       # walk time after 'Follow me': no movement at all in it -> sad eyes + sad line
   speed_slow: 60            # 0..255 (before the motors' minimum PWM): user sitting
-  speed_fast: 220           # user moving
-  dock_near_mm: 40          # dock sensor (port 7): closer than this = pill is on the sensor. Calibrate!
+  speed_fast: 255           # user moving
+  dock_near_mm: 10          # dock sensor (port 7): closer than this = pill is on the sensor. Calibrate!
   motion_energy_moving: 0.05  # wearable energy (g) at/above this = moving. Calibrate!
+
+# IMU/RSSI navigation is enabled only while Story owns an active walking episode.
+walking:
+  close_rssi_dbm: -80
+  return_power_drop: 0.20       # power ratio, equivalent to 0.9691 dB drop
+  rssi_stale_s: 3
+  motion_stale_s: 3
+  reversal_pause_s: 0.2
+
+# Coverage detector on robot_main port 7 (port 13 is the left eye).
+dock:
+  cover_pct: 60
+  open_pct: 0
+  hold_ms: 100

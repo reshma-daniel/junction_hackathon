@@ -7,3 +7,6 @@ Input: `wearable.motion` @1 Hz. Output: `activity.still_too_long`, `activity.mov
 - Baseline: rolling 7-day mean; `decline` when today's/last N days' value is `decline_pct` below.
 - Ignore sleeping hours (quiet hours) so night stillness doesn't trigger.
 - Tests: feed synthetic streams; no hardware needed.
+
+
+Implemented story path: `motion.py` validates 1 Hz SDK energy/moving samples. The existing Story owns the idle/reminder timer, so there is no second timer delaying a walk after speech.

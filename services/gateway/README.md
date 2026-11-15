@@ -14,3 +14,6 @@ class Bus:  # asyncio pub/sub
     async def publish(self, msg: dict): ...
     def subscribe(self, prefix: str) -> asyncio.Queue: ...
 ```
+
+
+Implemented story path: `story_inputs.py` dispatches the SDK events from the Board connections already opened by `run_story.py`. It opens no extra serial ports and replaces a separate bridge process for the full system.

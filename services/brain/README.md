@@ -9,3 +9,6 @@ The personality: subscribes to all events, runs the state machine from docs/ARCH
   a "Charlie" call interrupts everything except an ongoing speech line.
 - Logs every episode (trigger, prompts, outcome) to SQLite `kaamos.db` table `episodes` – useful for the therapist-facing story.
 - Pure logic, no I/O inside the state machine, so it is unit-testable with the simulator.
+
+
+The actual entry point is `run_story.py`; see `../../docs/INTEGRATION_WANHUI.md`. `walking.py` contains story-gated RSSI direction control; pill state enters `Story.on_dock`.

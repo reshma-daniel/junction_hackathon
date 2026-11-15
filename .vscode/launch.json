@@ -1,0 +1,71 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Story: integrated system (wheels off)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/services/brain/run_story.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--robot-port",
+        "/dev/cu.usbmodem101",
+        "--wearable-port",
+        "/dev/cu.usbmodem11301",
+        "--panel",
+        "--no-drive"
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Story: integrated system (motors enabled)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/services/brain/run_story.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--robot-port",
+        "/dev/cu.usbmodem101",
+        "--wearable-port",
+        "/dev/cu.usbmodem11301",
+        "--panel"
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "USB bridge: Wearable → Robot (motors enabled)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/firmware/wearable/bridge.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--wearable-port",
+        "/dev/cu.usbmodem11301",
+        "--robot-port",
+        "/dev/cu.usbmodem101"
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "USB bridge: Wearable monitor (motors disabled)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/firmware/wearable/bridge.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--wearable-port",
+        "/dev/cu.usbmodem11301",
+        "--robot-port",
+        "/dev/cu.usbmodem101",
+        "--monitor-only"
+      ],
+      "justMyCode": true
+    }
+  ]
+}
