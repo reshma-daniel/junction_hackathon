@@ -224,8 +224,16 @@ class StoryPanel:
                 status = "Charlie is waking up"
             elif phase in ("wait_call", "calling"):
                 status = "Waiting for someone to say “Charlie!”"
+            elif s.pill_motion_phase == "approach":
+                status = "Bringing your medicine closer"
+            elif s.pill_motion_phase == "return":
+                status = "Pill taken: moving back"
             elif s.walking:
-                status = "Charlie walks ahead: follow it!"
+                nav_phase = self.runner_get().get("navigation", {}).get("phase")
+                status = {"return": "Charlie is coming back to you",
+                          "encourage": "A little encouragement before continuing",
+                          "wait_for_user": "Waiting for you to start moving"}.get(
+                              nav_phase, "Charlie walks ahead: follow it!")
             elif s.following:
                 status = f"Walk time: {left(s.follow_until):.0f} s left to move"
             elif topic == "pill":
@@ -309,7 +317,8 @@ class StoryPanel:
                   "pill_at": hhmm(pill_tod), "still_s": s.y * self.speed, "reask_s": s.repeat_s * self.speed,
                   "walk_goal_s": s.follow_window_s * self.speed}
         return {"mode": "story", "started": self.started, "status": status, "eyes": self._eyes(), "log": log,
-                "busy": bool(playing), "paused": s.paused, "walking": walking, "settings": legacy,
+                "busy": bool(playing), "paused": s.paused, "walking": walking,
+                "pill_motion": s.pill_motion_phase, "settings": legacy,
                 "story_settings": st, "clock": clock, "wake": wake, "pill": pill_card, "move": move}
 
 

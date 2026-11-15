@@ -5,3 +5,4 @@ __pycache__/
 services/voice/library/live/
 build/
 .pio/
+logs/

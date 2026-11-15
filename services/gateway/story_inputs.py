@@ -7,8 +7,10 @@ from services.medication.dock import decode_dock
 
 
 class StoryInputs:
-    def __init__(self, story, walking):
+    def __init__(self, story, walking, telemetry=lambda kind, value: None):
         self.story, self.walking = story, walking
+        self.telemetry = telemetry
+        self._last_moving = None
 
     def wearable(self, event):
         if event.key != "wearable_motion":
@@ -16,12 +18,21 @@ class StoryInputs:
         sample = decode_motion(event.value)
         if sample is None:
             return
+        self.telemetry("wearable_motion", {"energy": sample.energy, "moving": sample.moving})
+        if sample.moving is not None and sample.moving != self._last_moving:
+            self.story.log(f"IMU moving={sample.moving}, energy={sample.energy:.4f}")
+            self._last_moving = sample.moving
         self.walking.on_motion(sample)
         self.story.on_motion(sample.energy, moving=sample.moving)
 
     def robot(self, event):
         if event.key == "wearable_ble":
             self.walking.position.update(event.value)
+            self.telemetry("wearable_ble", {"sample": event.value, **self.walking.position.snapshot()})
+        elif event.key == "robot_state":
+            # mode, motors-active flag, front min/left/right distances; this
+            # distinguishes an intended return from the firmware obstacle clamp.
+            self.telemetry("robot_state", event.value)
         elif event.key == "robot_dock":
             sample = decode_dock(event.value)
             if sample is not None:

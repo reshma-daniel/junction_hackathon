@@ -9,8 +9,8 @@ Pure logic, no hardware: it decides WHAT Charlie does and WHEN; an `act` object 
     X seconds after t0   pleading eyes + pill request; asks again every `repeat_s` while ignored
                          pill taken (dock sensor, port 7, stops seeing it) -> happy eyes + happy speech
     Y seconds without movement (wearable)  pleading eyes + "Follow me" line, THEN the robot drives off
-                         (walk_s seconds, avoiding obstacles with the front sensor on port 11):
-                         slowly while the user sits, faster while the wearable shows the user moving.
+                         (walk_s seconds, with the existing front obstacle clamp on port 11):
+                         IMU/RSSI selects approach, lead and return directions.
                          The robot never drives while it speaks (the speaker blocks its motor loop).
                          Walk time (`follow_window_s`, starts with the walk): at its end
                          the user moved at all -> happy eyes + praise;
@@ -38,11 +38,13 @@ class Story:
     def __init__(self, act, x: float, y: float, repeat_s: float = 5.0, max_reasks: int = 3, walk_s: float = 10.0,
                  motion_energy: float = 0.05, dock_near_mm: int = 40, dock_hold: int = 2, gap_s: float = 8.0,
                  follow_window_s: float = 10.0,
+                 pill_approach_s: float = 0.0,
                  clock: Callable[[], float] = time.monotonic, log: Callable[[str], None] = print):
         self.act, self.x, self.y = act, x, y
         self.repeat_s, self.max_reasks, self.walk_s = repeat_s, max_reasks, walk_s
         self.gap_s = gap_s
         self.follow_window_s = follow_window_s  # walk time: the user has this long after "Follow me" to move
+        self.pill_approach_s = max(0.0, pill_approach_s)
         self.motion_energy, self.dock_near_mm, self.dock_hold = motion_energy, dock_near_mm, dock_hold
         self.clock, self.log = clock, log
         self.lock = threading.RLock()
@@ -71,6 +73,11 @@ class Story:
         self.pill_next = 0.0
         self.dock_present: Optional[bool] = None   # None = not known yet
         self._dock_votes = 0
+        self.pill_delivered = False
+        self.pill_forward_s = 0.0
+        self.pill_motion_phase: Optional[str] = None
+        self.pill_motion_remaining = 0.0
+        self.pill_motion_started: Optional[float] = None
         # movement
         self.last_move = 0.0
         self.move_asks = 0
@@ -79,6 +86,9 @@ class Story:
         # robot walk after the "Follow me" line
         self.walking = False
         self._walk_pending = False
+        self._walk_encouraging = False
+        self._invitation_open = False
+        self._invitation_responded = False
         self.walk_until = 0.0
         self.walk_fast = False
         self.called_at: Optional[float] = None
@@ -124,6 +134,7 @@ class Story:
                 except queue.Empty:
                     break
             was_walking = self.walking
+            was_delivering = self.pill_motion_phase is not None
             self._reset_state()
             self.paused = False
         if was_walking:
@@ -131,6 +142,11 @@ class Story:
                 self.act.walk_stop()
             except Exception:
                 pass
+        if was_delivering:
+            try:
+                self.act.pill_stop()
+            except Exception as e:
+                self.log(f"! pill stop failed: {e}")
         self.log("Story restarted")
         self.begin()
 
@@ -140,6 +156,7 @@ class Story:
                 return
             self.paused, self._paused_at = True, self.clock()
         self._stop_walk()
+        self._pause_pill_motion()
         self.log("Paused")
 
     def resume(self) -> None:
@@ -195,6 +212,7 @@ class Story:
                 return
             try:
                 self._stop_walk()                          # never speak while driving
+                self._pause_pill_motion()
                 self.act.express(emotion, **kw)
             finally:
                 if then and gen == self.gen:               # the story goes on even if the robot missed a sound
@@ -276,13 +294,16 @@ class Story:
                 return
             was = self.pill
             self.pill = "done"
+            self._pause_pill_motion()
+            self.pill_motion_phase = None
+            self.pill_motion_remaining = 0.0
         if was == "wait":
             self.log("Pill removed before it was due: nothing to ask")
             return
         self.log("Pill taken: happy eyes + thank you")
         self.pill_done_at = self.clock()
         self.on_mark("pill", "pill taken")
-        self._say("reward", task="pill", then=lambda: self._end_topic("pill"))
+        self._say("reward", task="pill", then=self._return_after_pill)
 
     def on_motion(self, energy: float, moving: bool | None = None) -> None:
         """Wearable, once per second. energy >= threshold counts as moving."""
@@ -292,6 +313,11 @@ class Story:
         now = self.clock()
         with self.lock:
             self.user_moving_until = now + 2.0
+            if self._invitation_open:
+                # An early response belongs to the upcoming walk. Enqueuing a
+                # reward here would stop that walk immediately after speech.
+                self._invitation_responded = True
+                return
             if self.following:                            # judged at the end of the walk time
                 self.moved_in_window = True
                 return
@@ -309,6 +335,9 @@ class Story:
             if self.phase != "run" or self.paused:
                 return
             now = self.clock()
+            if self.pill_motion_phase is not None:
+                self._tick_pill_motion(now)
+                return
             if self.walking:
                 self._walk_tick(now)
                 return
@@ -362,7 +391,81 @@ class Story:
         self.log(f"Pill request {n}: pleading eyes + speech")
         self.on_mark("nudge", f"pill ask {n}")
         self.pill_next = float("inf")                     # re-armed when the speech has finished
-        self._say("pleading", attempt=n, then=self._arm_pill_repeat)
+        self._say("pleading", attempt=n, then=self._after_pill_prompt)
+
+    def _after_pill_prompt(self) -> None:
+        with self.lock:
+            if self.pill != "asking":
+                return
+            if not self.pill_delivered and self.pill_approach_s > 0:
+                self.pill_motion_phase = "approach"
+                self.pill_motion_remaining = self.pill_approach_s
+                self.pill_motion_started = None
+                self.log(f"Delivering pill: approach for {self.pill_approach_s:g} s")
+                return
+        self._arm_pill_repeat()
+
+    def _pause_pill_motion(self) -> None:
+        with self.lock:
+            if self.pill_motion_started is None:
+                return
+            elapsed = min(self.pill_motion_remaining, max(0.0, self.clock() - self.pill_motion_started))
+            if self.pill_motion_phase == "approach":
+                self.pill_forward_s += elapsed
+            self.pill_motion_remaining = max(0.0, self.pill_motion_remaining - elapsed)
+            self.pill_motion_started = None
+        try:
+            self.act.pill_stop()
+        except Exception as e:
+            self.log(f"! pill stop failed: {e}")
+
+    def _return_after_pill(self) -> None:
+        with self.lock:
+            if self.pill_forward_s > 0:
+                self.pill_motion_phase = "return"
+                self.pill_motion_remaining = self.pill_forward_s
+                self.pill_motion_started = None
+                self.log(f"Pill taken: reverse for {self.pill_forward_s:g} s to approximate the starting position")
+                return
+        self._end_topic("pill")
+
+    def _tick_pill_motion(self, now: float) -> None:
+        if self.pending:
+            self._pause_pill_motion()
+            return
+        if self.pill_motion_started is None and self.pill_motion_remaining > 0:
+            try:
+                self.act.pill_drive(1 if self.pill_motion_phase == "approach" else -1)
+            except Exception as e:
+                self.log(f"! pill drive failed: {e}")
+                try:
+                    self.act.pill_stop()
+                except Exception:
+                    pass
+                leg = self.pill_motion_phase
+                self.pill_motion_phase = None
+                self.pill_motion_remaining = 0.0
+                self.pill_delivered = True
+                if leg == "return":
+                    self.pill_forward_s = 0.0
+                    self._end_topic("pill")
+                else:
+                    self._arm_pill_repeat()
+                return
+            self.pill_motion_started = now
+        if (self.pill_motion_started is not None
+                and now - self.pill_motion_started < self.pill_motion_remaining):
+            return
+        leg = self.pill_motion_phase
+        self._pause_pill_motion()
+        self.pill_motion_phase = None
+        if leg == "approach":
+            self.pill_delivered = True
+            self._arm_pill_repeat()
+            self.log("Pill delivery arrived: waiting for pickup")
+        else:
+            self.pill_forward_s = 0.0
+            self._end_topic("pill")
 
     def _arm_pill_repeat(self) -> None:
         with self.lock:
@@ -379,6 +482,8 @@ class Story:
             return
         self.log(f"No movement for {self.y:g} s, reminder {n}: pleading eyes + encouraging speech")
         self.on_mark("walk_start", f'"Follow me" {n}')
+        self._invitation_open = True
+        self._invitation_responded = False
         self.last_move = float("inf")                     # re-armed when the speech has finished
         self._say("encouraging", mood="pleading", attempt=n, then=self._begin_walk)
 
@@ -398,9 +503,12 @@ class Story:
             self.walk_until = now + self.walk_s
             self.walk_fast = now < self.user_moving_until
             self.last_move = float("inf")
-            self.following, self.moved_in_window = True, False   # the walk time starts now
+            self.following = True
+            self.moved_in_window = self._invitation_responded or self.walk_fast
+            self._invitation_open = False
+            self._invitation_responded = False
             self.follow_until = now + self.follow_window_s
-        self.log(f"Robot walks for {self.walk_s:g} s ({'fast' if self.walk_fast else 'slow'}); "
+        self.log(f"Robot walk episode: {self.walk_s:g} s (user {'moving' if self.walk_fast else 'still'}); "
                  f"walk time {self.follow_window_s:g} s for the user to move")
         self._drive(fast=self.walk_fast)
 
@@ -411,13 +519,45 @@ class Story:
             self.log(f"! drive command failed: {e}")
 
     def _walk_tick(self, now: float) -> None:
+        if self._walk_encouraging:
+            return
+        if now >= self.walk_until:
+            self._stop_walk()
+            return
+        if getattr(self.act, "walk_needs_encouragement", lambda: False)():
+            self._encourage_return()
+            return
         fast = now < self.user_moving_until
         if fast != self.walk_fast:
             self.walk_fast = fast
             self.log(f"User {'moves' if fast else 'stopped'}: updating walk input")
             self._drive(fast=fast)
-        if now >= self.walk_until:
-            self._stop_walk()                             # the walk time is judged separately
+
+    def _encourage_return(self) -> None:
+        """At close RSSI, encourage once, then wait for wearable movement."""
+        self._walk_encouraging = True
+        gen = self.gen
+        self.log("RSSI close threshold reached: stop, encourage once, then wait for IMU moving=true")
+
+        def job():
+            if gen != self.gen or not self.walking or self.paused:
+                if gen == self.gen:
+                    self._walk_encouraging = False
+                return
+            began = self.clock()
+            try:
+                self.act.walk_hold()
+                self.act.express("encouraging", mood="encouraging", attempt=1)
+            finally:
+                with self.lock:
+                    if gen == self.gen:
+                        self._walk_encouraging = False
+                        if self.walking and not self.paused:
+                            duration = max(0.0, self.clock() - began)
+                            self.walk_until += duration
+                            self.follow_until += duration
+                            self.act.walk_resume()
+        self._enqueue(job)
 
     def _judge_walk(self) -> None:
         """End of the walk time: praise if the user moved at all, else sad eyes + a gentle back-off line."""

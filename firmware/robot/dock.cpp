@@ -4,7 +4,7 @@
 
 // Coverage hysteresis from Wanhui's pill_dock.ino, without hardware dependencies.
 struct PillDock {
-  int nearMm = 10, coverPct = 60, openPct = 0;
+  int nearMm = 10, coverPct = 30, openPct = 0;
   uint32_t holdMs = 100;
   int state = -1, candidate = -1;
   uint32_t candidateSince = 0;

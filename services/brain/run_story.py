@@ -27,6 +27,7 @@ sys.path.insert(0, str(REPO / "services" / "brain"))
 from express import Charlie  # noqa: E402  (eyes + Wiam's voice on one USB cable)
 from story import Story  # noqa: E402
 from services.gateway.story_inputs import StoryInputs
+from services.gateway.telemetry import RunTelemetry
 from services.position.rssi import RssiPosition
 from services.brain.walking import RssiWalk
 
@@ -41,6 +42,12 @@ class WalkingCharlie(Charlie):
         self.navigation = navigation
         self._closed = threading.Event()
         self._driving = False
+        self._walk_held = False
+        self._pill_speed = 0
+        self._stop_pending = False
+        self.telemetry = lambda kind, value: None
+        self._nav_last_report = 0.0
+        self._nav_last_phase = None
         threading.Thread(target=self._ping, daemon=True).start()
 
     def _ping(self) -> None:
@@ -64,27 +71,81 @@ class WalkingCharlie(Charlie):
             self._robot("robot_mode", "walk")
 
     def drive_tick(self) -> None:
-        if not self.navigation:
-            return
         with self.lock:
+            if self._stop_pending:
+                self.board.call("robot_mode", "stop", timeout=1)
+                self._stop_pending = False
+                return
+            if self._pill_speed:
+                self.board.call("robot_drive", f"{self._pill_speed},{self._pill_speed}", timeout=1)
+                return
+            if not self.navigation or self._walk_held:
+                return
             if not self._driving:
                 return
             speed = self.navigation.tick()
             # Existing robot_main remains sole hardware owner, including its
             # obstacle clamp, motor mapping and two-second communication watchdog.
             self.board.call("robot_drive", f"{speed},{speed}", timeout=1)
+            snapshot = self.navigation.snapshot()
+            marker = (snapshot["phase"], snapshot["blocked"])
+            now = time.monotonic()
+            if marker != self._nav_last_phase or now - self._nav_last_report >= 2:
+                def dbm(value):
+                    return "unknown" if value is None else f"{value:.2f}"
+                print(f"NAV phase={snapshot['phase']} speed={speed} "
+                      f"RSSI={dbm(snapshot['rssi_dbm'])} initial={dbm(snapshot['initial_rssi_dbm'])} "
+                      f"return_at<={dbm(snapshot['return_below_dbm'])} "
+                      f"close_at>={snapshot['close_rssi_dbm']:g} "
+                      f"blocked={snapshot['blocked'] or 'none'}", flush=True)
+                self._nav_last_phase, self._nav_last_report = marker, now
+                self.telemetry("navigation", snapshot)
 
     def walk_stop(self) -> None:
         with self.lock:
             if self.navigation:
                 self.navigation.stop()
+            self._walk_held = False
+            self._stop_pending = True
             self.board.call("robot_mode", "stop")
+            self._stop_pending = False
             was_driving, self._driving = self._driving, False
             if was_driving:
                 self.board.call("robot_express", "done")
 
+    def pill_drive(self, direction: int) -> None:
+        with self.lock:
+            self._pill_speed = 0
+            speed = self.fast if direction > 0 else -self.fast
+            self.board.call("robot_drive", f"{speed},{speed}", timeout=1)
+            self._pill_speed = speed
+
+    def pill_stop(self) -> None:
+        with self.lock:
+            self._pill_speed = 0
+            self._stop_pending = True
+            self.board.call("robot_mode", "stop", timeout=1)
+            self._stop_pending = False
+
+    def walk_needs_encouragement(self) -> bool:
+        return bool(self.navigation and self.navigation.phase == "encourage")
+
+    def walk_hold(self) -> None:
+        with self.lock:
+            self._walk_held = True
+            self._stop_pending = True
+            self.board.call("robot_mode", "stop", timeout=1)
+            self._stop_pending = False
+
+    def walk_resume(self) -> None:
+        with self.lock:
+            if self.navigation:
+                self.navigation.resume_after_encouragement()
+            self._walk_held = False
+
     def close(self) -> None:
         self._closed.set()
+        self._pill_speed = 0
         self.walk_stop()
 
 
@@ -133,18 +194,18 @@ def main() -> None:
     ap.add_argument("--y", type=float, default=d.get("y_idle_window_s", 7), help="idle window for movement, seconds")
     ap.add_argument("--repeat", type=float, default=d.get("pill_repeat_s", 5), help="seconds between pill requests")
     ap.add_argument("--max-reasks", type=int, default=d.get("max_reasks", 3))
-    ap.add_argument("--walk-s", type=float, default=d.get("walk_s", 10), help="how long the robot drives after 'Follow me'")
+    ap.add_argument("--walk-s", type=float, default=d.get("walk_s", 30), help="how long the robot drives after 'Follow me'")
     ap.add_argument("--gap", type=float, default=d.get("topic_gap_s", 8),
                     help="break in seconds between a pill episode and a walk ask (and the other way round)")
-    ap.add_argument("--follow", type=float, default=d.get("follow_window_s", 10),
+    ap.add_argument("--follow", type=float, default=d.get("follow_window_s", 30),
                     help="walk time: seconds after 'Follow me' for the user to move; no movement at all -> sad")
-    ap.add_argument("--slow", type=int, default=d.get("speed_slow", 60), help="walk speed while the user is still (0-255)")
-    ap.add_argument("--fast", type=int, default=d.get("speed_fast", 220), help="walk speed while the user moves (0-255)")
+    ap.add_argument("--slow", type=int, default=d.get("speed_slow", 60), help="still speed in legacy-drive mode only (0-255)")
+    ap.add_argument("--fast", type=int, default=d.get("speed_fast", 255), help="common PWM in RSSI mode; moving speed in legacy mode (0-255)")
     ap.add_argument("--legacy-drive", action="store_true", help="use the previous slow/fast walk mode without BLE control")
     ap.add_argument("--no-drive", action="store_true", help="never move the wheels (speech and eyes only)")
     ap.add_argument("--robot-port", help="robot USB port, e.g. COM8 (default: first board found)")
     ap.add_argument("--wearable-port", help="wearable USB port; leave out to run without the wearable")
-    ap.add_argument("--volume", type=float, default=d.get("volume", 0.4))
+    ap.add_argument("--volume", type=float, default=d.get("volume", 0.1))
     ap.add_argument("--panel", action="store_true",
                     help="set up and run the story from Wiam's demo panel in the browser (Story mode)")
     ap.add_argument("--panel-port", type=int, default=8766,
@@ -157,7 +218,13 @@ def main() -> None:
     robot = Board.connect(port=args.robot_port) if args.robot_port else Board.connect()
     wearable = None
     charlie = None
+    telemetry = None
     try:
+        telemetry = RunTelemetry(REPO / "logs")
+        print(f"Telemetry log: {telemetry.path}", flush=True)
+        telemetry.record("settings", {"walk_s": args.walk_s, "follow_s": args.follow,
+                                      "robot_port": args.robot_port, "wearable_port": args.wearable_port,
+                                      "no_drive": args.no_drive, "walking": d["walking"]})
         wearable = Board.connect(port=args.wearable_port) if args.wearable_port else None
         if wearable is None:
             print("No wearable: RSSI walking stays stopped; 'm' only rehearses story reactions.", flush=True)
@@ -170,18 +237,24 @@ def main() -> None:
                               reversal_s=wc.get("reversal_pause_s", 0.2))
         charlie = WalkingCharlie(robot, args.volume, args.slow, args.fast,
                                   navigation=None if args.legacy_drive else navigation)
-        for key, default in (("near_mm", d.get("dock_near_mm", 10)), ("cover_pct", 60), ("open_pct", 0), ("hold_ms", 100)):
+        charlie.telemetry = telemetry.record
+        for key, default in (("near_mm", d.get("dock_near_mm", 10)), ("cover_pct", 30), ("open_pct", 0), ("hold_ms", 100)):
             action = {"near_mm": "dock_near", "cover_pct": "dock_cover", "open_pct": "dock_open", "hold_ms": "dock_hold"}[key]
             charlie._robot(action, str(default if key == "near_mm" else d["dock"].get(key, default)))
         print("Firmware: robot=firmware/robot_main; wearable=firmware/wearable; standalone bridge is not needed.", flush=True)
         drive = {"on": not args.no_drive, "volume": args.volume}
         dock_near = {"mm": d.get("dock_near_mm", 10)}
-        real_walk, real_stop = charlie.walk, charlie.walk_stop
+        real_walk, real_stop, real_pill_drive = charlie.walk, charlie.walk_stop, charlie.pill_drive
 
         def walk(fast: bool = False) -> None:            # wheels can be switched off (--no-drive / panel)
             if drive["on"]:
                 real_walk(fast)
         charlie.walk = walk
+
+        def pill_drive(direction: int) -> None:
+            if drive["on"]:
+                real_pill_drive(direction)
+        charlie.pill_drive = pill_drive
 
         def runner_get() -> dict:
             return {"speed_slow": charlie.slow, "speed_fast": charlie.fast, "drive": drive["on"],
@@ -204,6 +277,7 @@ def main() -> None:
                 drive["on"] = bool(new["drive"])
                 changed.append("wheels " + ("on" if drive["on"] else "off"))
                 if not drive["on"]:
+                    charlie.pill_stop()
                     real_stop()
             if "dock_near_mm" in new:
                 try:
@@ -225,11 +299,16 @@ def main() -> None:
                     pass
             return changed
 
+        def story_log(message):
+            print(f"{time.strftime('%H:%M:%S')}  {message}", flush=True)
+            telemetry.record("story", message)
+
         story = Story(charlie, x=args.x, y=args.y, repeat_s=args.repeat, max_reasks=args.max_reasks, walk_s=args.walk_s,
                       gap_s=args.gap, follow_window_s=args.follow,
+                      pill_approach_s=d.get("pill_approach_s", 2.5),
                       motion_energy=d.get("motion_energy_moving", 0.05), dock_near_mm=d.get("dock_near_mm", 10),
-                      log=lambda m: print(f"{time.strftime('%H:%M:%S')}  {m}", flush=True))
-        inputs = StoryInputs(story, navigation)
+                      log=story_log)
+        inputs = StoryInputs(story, navigation, telemetry=telemetry.record)
         if args.panel:
             from story_panel import StoryPanel, serve
             panel = StoryPanel(story, charlie, runner_get, runner_set, day_s=d.get("panel_day_s", 180),
@@ -267,6 +346,8 @@ def main() -> None:
             robot.close()
             if wearable:
                 wearable.close()
+            if telemetry:
+                telemetry.close()
 
 
 if __name__ == "__main__":

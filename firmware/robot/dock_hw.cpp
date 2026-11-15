@@ -34,7 +34,7 @@ static void dock_tick() {
         int d = grid[i];
         if (d <= 0) continue;
         ++valid; if (d < dockMin) dockMin = d;
-        if (d < dockDetector.nearMm) ++dockClose;
+        if (d <= dockDetector.nearMm) ++dockClose;
       }
       dockValid = valid * 2 >= dockZones && dockZones > 0;
       changed = dockDetector.update(dockClose, dockZones, valid, now);

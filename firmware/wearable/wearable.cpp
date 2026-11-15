@@ -4,6 +4,7 @@
 #include <esp_system.h>
 #include "atech_helpers.h"
 #include "icm40608.h"
+#include "motion_detection.cpp"
 
 extern ICM40608 icm40608_imu;
 
@@ -16,7 +17,7 @@ static EveryTimer imuTimer;
 
 // ---- wearable.motion reporter (team-shared format) ----
 // Every 20 ms (50 Hz) the acceleration magnitude |a| (g) is read and |(|a| - 1 g)|
-// is accumulated. Once per second: energy = mean of those deviations over the
+// is accumulated. Every 100 ms: energy = mean of those deviations over the
 // window, moving = energy > moveThreshG, and one line is sent:
 //   {"type":"wearable.motion","payload":{"energy":0.0123,"moving":false}}
 // MOVE_THRESHOLD_G mirrors move_threshold_g in src/shared/config.yaml; keep them equal.
@@ -25,18 +26,17 @@ static float moveThreshG = MOVE_THRESHOLD_G;  // adjustable with: thresh <g>
 static double winSum = 0.0;
 static uint32_t winN = 0;
 static float lastEnergy = NAN;
-// State-change reporting: energy is computed every second ON THE BOARD; a
+// State-change reporting: energy is computed at 10 Hz ON THE BOARD; a
 // wearable.motion line is sent only when the debounced moving flag flips
 // (and once at boot when the first state is confirmed).
-static uint32_t moveHoldS = 2;       // seconds above threshold before "moving"
-static uint32_t stillHoldS = 5;      // seconds below threshold before "still"
+static MotionDebounce motionDebounce; // five 100 ms windows before "moving"
+static uint32_t stillHoldS = 2;      // seconds below threshold before "still"
 static int reportedMoving = -1;      // -1 unknown, 0 still, 1 moving
-static uint32_t aboveRun = 0, belowRun = 0;
-static bool verbose = false;         // "verbose on" prints every 1 s window (debug)
+static bool verbose = false;         // "verbose on" prints every 100 ms window (debug)
 static Preferences prefs;
 static EveryTimer sampleTimer;
 static EveryTimer reportTimer;
-// calibration: "calib sit" / "calib walk" average energy over 10 windows
+// calibration: "calib sit" / "calib walk" average energy over 100 windows (10 seconds)
 static int calibMode = 0;            // 0 none, 1 sit, 2 walk
 static int calibLeft = 0;
 static double calibSum = 0.0;
@@ -60,7 +60,7 @@ static const char* resetReasonStr() {
 
 
 static void printHelp() {
-  Serial.println("{\"type\":\"help\",\"payload\":{\"commands\":[\"thresh 0.05\",\"calib sit\",\"calib walk\",\"status\",\"move_hold 2\",\"still_hold 5\",\"verbose on|off\",\"stream on|off\",\"rate 100\",\"accel\",\"motion\",\"motion true|false\",\"help\"]}}");
+  Serial.println("{\"type\":\"help\",\"payload\":{\"commands\":[\"thresh 0.05\",\"calib sit\",\"calib walk\",\"status\",\"move_samples 5\",\"still_hold 2\",\"verbose on|off\",\"stream on|off\",\"rate 100\",\"accel\",\"motion\",\"motion true|false\",\"help\"]}}");
 }
 
 
@@ -90,9 +90,9 @@ static void printStatus() {
   if (isnan(walkEnergy)) Serial.print("null"); else Serial.printf("%.4f", walkEnergy);
   Serial.print(",\"energy\":");
   if (isnan(lastEnergy)) Serial.print("null"); else Serial.printf("%.4f", lastEnergy);
-  Serial.printf(",\"moving\":%s,\"move_hold_s\":%u,\"still_hold_s\":%u,\"verbose\":%s,\"calibrating\":%s",
+  Serial.printf(",\"moving\":%s,\"move_hold_s\":%.1f,\"move_hold_samples\":%u,\"motion_hz\":10,\"still_hold_s\":%u,\"verbose\":%s,\"calibrating\":%s",
                 reportedMoving < 0 ? "null" : (reportedMoving ? "true" : "false"),
-                (unsigned)moveHoldS, (unsigned)stillHoldS, verbose ? "true" : "false",
+                motionDebounce.moveSamples / 10.0, (unsigned)motionDebounce.moveSamples, (unsigned)stillHoldS, verbose ? "true" : "false",
                 calibMode == 1 ? "\"sit\"" : (calibMode == 2 ? "\"walk\"" : "null"));
   Serial.printf(",\"sensor_ok\":%s}}\n", imuOk ? "true" : "false");
 }
@@ -133,16 +133,14 @@ static void sendMotionLine(float energy, bool moving) {
 static void reportMotion() {
   if (winN == 0) {
     lastEnergy = NAN;
+    motionDebounce.resetCandidates();
     if (verbose) Serial.println("{\"type\":\"wearable.energy\",\"payload\":{\"energy\":null,\"above\":null}}");
     return;
   }
   lastEnergy = (float)(winSum / winN);
   winSum = 0.0; winN = 0;
   bool above = lastEnergy > moveThreshG;
-  if (above) { aboveRun++; belowRun = 0; } else { belowRun++; aboveRun = 0; }
-  int next = reportedMoving;
-  if (aboveRun >= moveHoldS) next = 1;
-  else if (belowRun >= stillHoldS) next = 0;
+  int next = motionDebounce.update(above);
   if (next != reportedMoving) {
     reportedMoving = next;
     sendMotionLine(lastEnergy, next == 1);
@@ -150,7 +148,7 @@ static void reportMotion() {
     Serial.printf("{\"type\":\"wearable.energy\",\"payload\":{\"energy\":%.4f,\"above\":%s}}\n",
                   lastEnergy, above ? "true" : "false");
   }
-  // Integrated story consumes one SDK event each second. Keep the original
+  // Integrated story consumes one SDK event every 100 ms. Keep the original
   // change-only wearable.motion line for the standalone USB test bridge.
   Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"sensor\",\"key\":\"wearable_motion\",\"value\":{\"energy\":%.4f,\"moving\":", lastEnergy);
   if (reportedMoving < 0) Serial.print("null"); else Serial.print(reportedMoving ? "true" : "false");
@@ -188,13 +186,27 @@ static void handle(const char* action, const char* value) {
     if (strcmp(value, "sit") == 0) calibMode = 1;
     else if (strcmp(value, "walk") == 0) calibMode = 2;
     else { printError("calib", "expected sit or walk"); return; }
-    calibLeft = 10; calibSum = 0.0; calibCount = 0;
+    calibLeft = 100; calibSum = 0.0; calibCount = 0;
     Serial.printf("{\"type\":\"wearable.calib\",\"payload\":{\"recording\":\"%s\",\"seconds\":10}}\n", value);
+  } else if (strcmp(action, "move_samples") == 0) {
+    long v = atol(value);
+    if (v < 1 || v > 1200) { printError(action, "expected consecutive 100 ms windows, 1-1200"); return; }
+    motionDebounce.moveSamples = v;
+    motionDebounce.resetCandidates();
+    prefs.putUInt("msamples", v);
+    printStatus();
   } else if (strcmp(action, "move_hold") == 0 || strcmp(action, "still_hold") == 0) {
     long v = atol(value);
     if (v < 1 || v > 120) { printError(action, "expected seconds, 1-120"); return; }
-    if (action[0] == 'm') { moveHoldS = v; prefs.putUInt("mhold", v); }
-    else { stillHoldS = v; prefs.putUInt("shold", v); }
+    if (action[0] == 'm') {
+      motionDebounce.moveSamples = v * 10;
+      prefs.putUInt("msamples", motionDebounce.moveSamples);
+    } else {
+      stillHoldS = v;
+      motionDebounce.stillSamples = v * 10;
+      prefs.putUInt("shold", v);
+    }
+    motionDebounce.resetCandidates();
     printStatus();
   } else if (strcmp(action, "verbose") == 0) {
     verbose = (strcmp(value, "on") == 0 || strcmp(value, "1") == 0 || strcmp(value, "true") == 0);
@@ -224,8 +236,13 @@ void wearable_setup() {
   imuOk = icm40608_imu.isConnected();
   prefs.begin("wearable", false);
   moveThreshG = prefs.getFloat("thresh", MOVE_THRESHOLD_G);
-  moveHoldS = prefs.getUInt("mhold", moveHoldS);
+  // New sample-count key intentionally ignores the old two-second mhold setting.
+  motionDebounce.moveSamples = prefs.getUInt("msamples", 5);
+  if (motionDebounce.moveSamples < 1 || motionDebounce.moveSamples > 1200)
+    motionDebounce.moveSamples = 5;
   stillHoldS = prefs.getUInt("shold", stillHoldS);
+  if (stillHoldS < 1 || stillHoldS > 120) stillHoldS = 2;
+  motionDebounce.stillSamples = stillHoldS * 10;
   if (!imuOk) printError("begin", "orientation sensor did not answer; check it is on port 11");
 
 
@@ -236,7 +253,7 @@ void wearable_setup() {
 
 void wearable_tick() {
   if (sampleTimer.ready(20)) sampleAccel();
-  if (reportTimer.ready(1000)) reportMotion();
+  if (reportTimer.ready(100)) reportMotion();
   if (imuStreamOn && imuTimer.ready(imuPeriodMs)) sendAccel();
   delay(1);
 }

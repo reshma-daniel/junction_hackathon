@@ -54,7 +54,7 @@ the existing `services/voice/requirements.txt` and their account configuration.
 
 | Layer | File | Responsibility |
 | --- | --- | --- |
-| firmware | `firmware/wearable/wearable.cpp` | 50 Hz sampling, 1 Hz energy, calibrated/debounced moving flag, existing USB commands |
+| firmware | `firmware/wearable/wearable.cpp` | 50 Hz sampling, 10 Hz energy/events (5 consecutive windows to start moving; 2 s to stop), calibrated/debounced moving flag, existing USB commands |
 | firmware | `firmware/wearable/ble_beacon.cpp` | broadcast the shared BLE UUID |
 | firmware | `firmware/robot/ble_scanner.cpp` | report `wearable_ble` RSSI, no motor decisions |
 | firmware | `firmware/robot/dock.cpp`, `dock_hw.cpp` | coverage hysteresis and hold time, report `robot_dock` |
@@ -66,11 +66,32 @@ the existing `services/voice/requirements.txt` and their account configuration.
 | brain | `services/brain/run_story.py` | wire services together, send existing `robot_drive` commands |
 
 The IMU now additionally emits standard SDK `wearable_motion` events every
-second, with `energy` and `moving` (null until the initial debounce completes).
+100 ms, with `energy` and `moving` (null until the initial debounce completes).
 Original change-only `wearable.motion` log lines are retained for the bench
 bridge. The integrated runner consumes the SDK events, not log lines.
 
 ## Behavior in the story
+
+Current defaults: speaker volume 0.1, `walk_s` 30 s, `follow_window_s` 30 s.
+After the first pill reminder finishes, the robot approaches for
+`story.pill_approach_s` (2.5 s). Repeated reminders do not repeat the approach.
+Pickup stops motion immediately; after the cached pill praise, robot reverses
+for the recorded approach duration and stops. Early pickup shortens the return,
+and paused time is excluded. This is a timed approximation of the starting
+position, not odometry; obstacles, ramps and wheel slip can change actual travel.
+
+During return, a fresh current IMU `moving:true` resumes lead directly, without
+waiting for a false-to-true edge or speech. RSSI return is then disarmed until
+the signal recovers above the return threshold, preventing the same weak signal
+from immediately reversing the robot again. If still, reaching -80 dBm enters
+`encourage` at zero speed.
+Story holds the wheels, plays the existing level-1 encouragement reaction once,
+then enters `wait_for_user` at zero speed. RSSI fluctuations cannot restart
+approach or repeat the prompt in this state; fresh IMU `moving:true` resumes lead.
+The story deadline and pause/stop remain effective while waiting.
+Speech time is added back to the walk and follow
+deadlines. Pause/restart cancels resumption. `--no-drive` gates both walking and
+pill delivery; these changes only require restarting Python, not reflashing.
 
 - The existing pill-first ordering, invitation speech, eye animations,
   `--walk-s` deadline, praise/sad result, panel pause/restart and no-drive switch
@@ -79,10 +100,12 @@ bridge. The integrated runner consumes the SDK events, not log lines.
 - `story.y_idle_window_s` defaults to 10. The story's still interval is the
   initial delay; there is no additional ten-second delay after the invitation.
 - During an allowed walk, still means approach (+255); a moving transition
-  selects lead (-255). Still reports after departure do not reverse direction.
-- Returning is based on smoothed RSSI dropping 20% in received power from the
+  selects lead (-255). While leading, a confirmed still report also triggers return.
+- Returning is triggered by either confirmed IMU stillness or smoothed RSSI
+  dropping 20% in received power from the
   first measured per-process baseline (0.9691 dB). On return, reaching -80 dBm
-  or stronger resumes lead automatically. The baseline is not reset on a turn.
+  or stronger while still pauses for one encouragement, then waits for motion. Current
+  moving status resumes lead directly. The baseline is not reset on a turn.
 - The firmware's motor sign mapping matches the calibrated bench version
   (logical forward: negative on 1/6, positive on 9/14). Its obstacle clamp,
   ramp and two-second hardware watchdog are retained. RSSI cannot determine
@@ -107,6 +130,16 @@ An initially empty dock, duplicate reports or the raw min-distance event alone
 cannot count as taking a pill. The raw distance remains available on the panel.
 
 ## Tests
+
+Each run writes local diagnostics to `logs/story-*.jsonl` (ignored by git).
+It records timestamped IMU samples, raw/smoothed BLE data with the fixed run
+baseline and threshold, navigation phases, story messages and `robot_state`.
+The last contains mode, motor-active flag and front min/left/right distances;
+compare it with requested navigation speed to diagnose obstacle suppression.
+The wearable's current moving debounce remains two one-second windows, plus the
+runner's scheduling, reversal pause and firmware ramp before full reverse speed.
+Movement reported while an invitation is still speaking is buffered for the
+upcoming walk; it must not queue a premature reward that would stop the walk.
 
 ```bash
 python -m pip install -r services/brain/requirements-dev.txt

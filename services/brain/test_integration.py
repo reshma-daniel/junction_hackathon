@@ -54,31 +54,68 @@ def test_rssi_baseline_is_per_run_and_not_fixed_close_reference():
     assert walk.tick() == -255
     feed(pos, -92.98)
     assert walk.tick() == 0 and walk.phase == "return"
+    walk.on_motion(MotionSample(.01, False))
     clock.t = .42
     assert walk.tick() == 255
     feed(pos, -80.01)
     assert walk.tick() == 255
     feed(pos, -80)
-    assert walk.tick() == 0 and walk.phase == "lead"
+    assert walk.tick() == 0 and walk.phase == "encourage"
+    walk.resume_after_encouragement()
+    walk.on_motion(MotionSample(.2, True))
     clock.t = .63
     assert walk.tick() == -255
     assert pos.initial == -92
 
 
-def test_still_cannot_return_or_interrupt_return_and_duplicates_do_not_flip():
+def test_still_triggers_return_and_new_movement_ends_return_before_rssi_close():
     clock, pos, walk = setup_walk()
     feed(pos, -85)
     walk.on_motion(MotionSample(.2, True)); walk.start()
     assert walk.tick() == -255
     walk.on_motion(MotionSample(.01, False))
-    assert walk.tick() == -255
-    feed(pos, -87)
-    assert walk.tick() == 0
+    assert walk.tick() == 0 and walk.phase == "return"
+    assert walk.snapshot()["imu_return_condition"] is True
+    assert walk.snapshot()["rssi_return_condition"] is False
     clock.t = .21
-    walk.on_motion(MotionSample(.2, True))
     assert walk.tick() == 255 and walk.phase == "return"
     walk.on_motion(MotionSample(.2, True))
-    assert walk.tick() == 255
+    assert walk.tick() == 0 and walk.phase == "lead"
+    clock.t = .42
+    assert walk.tick() == -255 and walk.phase == "lead"
+
+
+def test_current_moving_ends_rssi_return_and_persistent_weak_signal_does_not_retrigger():
+    clock, pos, walk = setup_walk()
+    feed(pos, -85)
+    walk.on_motion(MotionSample(.2, True)); walk.start()
+    assert walk.tick() == -255
+    feed(pos, -87)
+    assert walk.tick() == 0 and walk.phase == "return"
+    clock.t = .21
+    walk.on_motion(MotionSample(.2, True))
+    assert walk.tick() == 0 and walk.phase == "lead"
+    clock.t = .42
+    assert walk.tick() == -255
+    clock.t = .63
+    assert walk.tick() == -255 and walk.phase == "lead"
+    feed(pos, -85)  # Signal recovers: a subsequent drop can trigger again.
+    assert walk.tick() == -255
+    feed(pos, -87)
+    assert walk.tick() == 0 and walk.phase == "return"
+
+
+def test_unknown_or_stale_motion_does_not_trigger_return():
+    clock, pos, walk = setup_walk()
+    feed(pos, -85)
+    walk.on_motion(MotionSample(.2, True)); walk.start()
+    assert walk.tick() == -255
+    walk.on_motion(MotionSample(.01, None))
+    assert walk.tick() == -255 and walk.phase == "lead"
+    clock.t = 3
+    feed(pos, -85)
+    assert walk.tick() == 0 and walk.phase == "lead"
+    assert walk.snapshot()["imu_return_condition"] is False
 
 
 def test_sensor_loss_stops_even_when_laptop_still_running():
@@ -127,8 +164,11 @@ def charlie_fake(walk):
     charlie = object.__new__(WalkingCharlie)
     charlie.board = BoardFake(); charlie.lock = threading.Lock()
     charlie.navigation = walk; charlie._driving = False
+    charlie._walk_held = False; charlie._pill_speed = 0; charlie._stop_pending = False
     charlie._closed = threading.Event()
+    charlie.telemetry = lambda kind, value: None
     charlie.slow = 60; charlie.fast = 255
+    charlie._nav_last_report = 0.0; charlie._nav_last_phase = None
     return charlie
 
 
@@ -190,6 +230,57 @@ def test_pause_during_invitation_does_not_start_wheels_when_speech_finishes():
     assert ("robot_drive", "255,255") in charlie.board.calls
 
 
+def test_moving_during_invitation_starts_walk_without_premature_praise():
+    clock, pos, walk = setup_walk()
+    charlie = charlie_fake(walk)
+    story = Story(charlie, x=1000, y=10, walk_s=30, follow_window_s=30,
+                  clock=clock, log=lambda m: None)
+    story.phase = "run"; story.topic = "move"
+    spoken = []
+    def express(emotion, **kwargs):
+        spoken.append(emotion)
+        if emotion == "encouraging":
+            clock.t = .5;feed(pos, -80)
+            walk.on_motion(MotionSample(.2, True))
+            story.on_motion(.2, moving=True)  # User responds before voice ends.
+            clock.t = 1.5
+    charlie.express = express
+    story._ask_move(clock.t); story.drain();charlie.drive_tick()
+    assert spoken == ["encouraging"]
+    assert story.walking and walk.enabled and walk.output == -255
+    assert story.moved_in_window and story.pending == 0
+
+
+def test_sixty_second_story_keeps_rssi_return_cycles_active():
+    clock, pos, walk = setup_walk()
+    charlie = charlie_fake(walk)
+    story = Story(charlie, x=1000, y=10, walk_s=60, follow_window_s=60,
+                  clock=clock, log=lambda m: None)
+    story.phase = "run"
+    inputs = StoryInputs(story, walk)
+    def inputs_at(t, rssi, moving):
+        clock.t = t
+        feed(pos, rssi)
+        inputs.wearable(SimpleNamespace(key="wearable_motion", value={"energy": .2 if moving else .01, "moving": moving}))
+        story.tick(); charlie.drive_tick()
+    inputs_at(0, -90, False)
+    charlie.express = lambda *args, **kwargs: None
+    story._begin_walk(); charlie.drive_tick()
+    assert walk.output == 255
+    inputs_at(1, -82, True); inputs_at(1.21, -82, True)
+    assert walk.output == -255 and walk.phase == "lead"
+    inputs_at(5, -92, False); inputs_at(5.21, -92, False)
+    assert walk.output == 255 and walk.phase == "return"
+    inputs_at(10, -80, False); inputs_at(10.01, -80, True); story.drain(); inputs_at(10.22, -80, True)
+    assert walk.output == -255 and walk.phase == "lead"
+    inputs_at(20, -92, False); inputs_at(20.21, -92, False)
+    assert walk.output == 255 and walk.phase == "return"
+    inputs_at(30, -80, False); inputs_at(30.01, -80, True); story.drain(); inputs_at(30.22, -80, True)
+    assert walk.output == -255 and walk.phase == "lead"
+    inputs_at(60, -80, False)
+    assert not walk.enabled and not story.walking
+
+
 def test_initial_empty_dock_and_repeated_removed_events_never_reward_twice():
     clock, pos, walk = setup_walk()
     story = Story(None, x=10, y=10, clock=clock, log=lambda m: None)
@@ -226,8 +317,10 @@ def test_validated_motion_routes_to_both_story_and_navigation():
     assert walk.moving is True and story.user_moving_until == 2
 
 
-def test_existing_cli_opens_each_board_once_and_stops_on_exit(monkeypatch):
+def test_existing_cli_opens_each_board_once_and_stops_on_exit(monkeypatch, tmp_path):
     import atech
+    factory = run_story.RunTelemetry
+    monkeypatch.setattr(run_story, "RunTelemetry", lambda directory: factory(tmp_path))
     class FakeBoard(BoardFake):
         closed = False
         def close(self): self.closed = True
@@ -253,8 +346,10 @@ def test_existing_cli_opens_each_board_once_and_stops_on_exit(monkeypatch):
     assert ("dock_near", "10") in robot.calls
 
 
-def test_incompatible_firmware_cleanup_preserves_original_startup_error(monkeypatch):
+def test_incompatible_firmware_cleanup_preserves_original_startup_error(monkeypatch, tmp_path):
     import atech
+    factory = run_story.RunTelemetry
+    monkeypatch.setattr(run_story, "RunTelemetry", lambda directory: factory(tmp_path))
     class OldFirmware(BoardFake):
         closed = False
         def call(self, action, value="", **kwargs):
